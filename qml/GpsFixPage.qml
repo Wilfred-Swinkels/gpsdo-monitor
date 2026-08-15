@@ -85,23 +85,15 @@ Item {
                 }
             }
 
-            Text {
-                id: subtitle
-                width: parent.width
-                text: "Signaalsterkte per satelliet (CN0)"
-                color: page.colInkDim
-                font.pixelSize: 12 * page.uiScale
-                font.letterSpacing: 1
-                font.bold: true
-            }
-
             // --- Time Mode Survey-In-status (UBX-TIM-SVIN) -----------------
             // Altijd zichtbaar (i.p.v. conditioneel verborgen) zodat de
             // barChart-hoogte hieronder een vaste, eenvoudige aftrek kan
             // blijven — zelfde "—" bij geen data-conventie als de rest van
             // de app. GPS Time Mode start automatisch zodra --gps opgegeven
             // is (geen aparte CLI-vlag meer nodig), zie main.cpp/
-            // TimeModeSupervisor.h.
+            // TimeModeSupervisor.h. Op verzoek fors groter dan de rest van
+            // de kleine label-tekst op deze pagina — dit is de enige regel
+            // die in één oogopslag leesbaar moet zijn vanaf een afstandje.
             Text {
                 id: surveyInStatus
                 width: parent.width
@@ -113,16 +105,20 @@ Item {
                               ? "voltooid (Fixed Mode) — " + gpsdoModel.surveyInDurationText + ", "
                                 + gpsdoModel.surveyInAccuracyText
                               : "niet actief"))
-                color: page.colInkDim
-                font.pixelSize: 11 * page.uiScale
+                color: page.colInk
+                font.pixelSize: 24 * page.uiScale
+                font.bold: true
                 font.family: "monospace"
             }
 
             // --- balkendiagram --------------------------------------------
+            // Subtitel "Signaalsterkte per satelliet (CN0)" op verzoek
+            // verwijderd — de balkjes met dB-waarden erachter spreken voor
+            // zich, geen extra uitleg nodig.
             Column {
                 id: barChart
                 width: parent.width
-                height: parent.height - 24 * page.uiScale - tilesRow.height - subtitle.height - surveyInStatus.height - 4 * (10 * page.uiScale)
+                height: parent.height - 24 * page.uiScale - tilesRow.height - surveyInStatus.height - 3 * (10 * page.uiScale)
                 spacing: 4 * page.uiScale
 
                 Repeater {
