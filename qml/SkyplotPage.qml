@@ -27,8 +27,13 @@ Item {
     property color colGold: "#f3714f"
     property color colIce: "#80c8ec"
 
+    // Op verzoek omgezet van de oorspronkelijke blauwe schaal naar geel —
+    // zelfde 5-staps opbouw (donker=zwak -> fel=sterk), alleen de kleurfamilie
+    // is anders. Bovenste stop is bewust dezelfde tint (#ffe600) als de
+    // felgele "actief in fix"-markering hierboven: een sterk EN gebruikt
+    // signaal mag er ook als zodanig uitzien.
     function cn0Color(cn0) {
-        var stops = ["#0d1f28", "#164a5c", "#1f7a93", "#3fa8c4", "#80c8ec"]
+        var stops = ["#221b02", "#4a3c05", "#7a640a", "#c9a812", "#ffe600"]
         var idx = Math.min(stops.length - 1, Math.floor((cn0 / 50) * stops.length))
         return stops[Math.max(0, idx)]
     }
@@ -313,11 +318,11 @@ Item {
                     radius: height / 2
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
-                        GradientStop { position: 0.0; color: "#0d1f28" }
-                        GradientStop { position: 0.3; color: "#164a5c" }
-                        GradientStop { position: 0.55; color: "#1f7a93" }
-                        GradientStop { position: 0.8; color: "#3fa8c4" }
-                        GradientStop { position: 1.0; color: page.colIce }
+                        GradientStop { position: 0.0; color: "#221b02" }
+                        GradientStop { position: 0.3; color: "#4a3c05" }
+                        GradientStop { position: 0.55; color: "#7a640a" }
+                        GradientStop { position: 0.8; color: "#c9a812" }
+                        GradientStop { position: 1.0; color: "#ffe600" }
                     }
                 }
                 Text {
