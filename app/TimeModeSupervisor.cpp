@@ -18,6 +18,7 @@ TimeModeSupervisor::TimeModeSupervisor(GpsLink *gpsLink, QObject *parent)
     connect(m_gpsLink, &GpsLink::timeModeReported, this, &TimeModeSupervisor::onTimeModeReported);
     connect(m_gpsLink, &GpsLink::fixUpdated, this, &TimeModeSupervisor::onFixUpdated);
     connect(m_gpsLink, &GpsLink::surveyInUpdated, this, &TimeModeSupervisor::onSurveyInUpdated);
+    connect(m_gpsLink, &GpsLink::ackReceived, this, &TimeModeSupervisor::onAckReceived);
 }
 
 void TimeModeSupervisor::begin(quint32 minDurationSeconds, quint32 varLimitMm2, double moveThresholdMeters) {
@@ -156,6 +157,28 @@ void TimeModeSupervisor::finishVerification() {
         // Resultaat wordt via onSurveyInUpdated() opgeslagen zodra de nieuwe
         // Survey-In voltooit (valid && !active).
     }
+}
+
+void TimeModeSupervisor::onAckReceived(quint8 msgClass, quint8 msgId, bool acked) {
+    if (msgClass != 0x06 || msgId != 0x1D) // alleen CFG-TMODE is relevant hier
+        return;
+    if (acked)
+        return; // geaccepteerd -- niets bijzonders nodig, normale flow loopt door
+    if (m_triedDirectSetFallback)
+        return; // al één keer geprobeerd deze sessie -- niet blijven herhalen
+
+    // De module wijst zelfs de lege CFG-TMODE-POLL af. Sommige (vooral
+    // goedkopere) modules/firmware-builds implementeren de poll-variant
+    // van een bericht niet correct, terwijl een echt Set-commando (met
+    // inhoud) wél gewoon werkt -- dus als test één keer rechtstreeks
+    // proberen, in plaats van het er meteen bij te laten zitten. Veilig
+    // om te proberen: er is nooit een geldige Survey-In/Fixed Mode geweest
+    // op deze module, dus er is niets te verstoren.
+    m_triedDirectSetFallback = true;
+    QTextStream(stderr) << "TimeModeSupervisor: module wees de CFG-TMODE-statusvraag (poll) af (NAK) "
+                            "-- probeer als test één keer een rechtstreeks Survey-In-commando (met "
+                            "inhoud, geen poll)...\n";
+    m_gpsLink->startSurveyIn(m_minDurationSeconds, m_varLimitMm2);
 }
 
 void TimeModeSupervisor::onSurveyInUpdated(const SurveyInStatus &status) {

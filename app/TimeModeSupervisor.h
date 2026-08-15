@@ -103,6 +103,13 @@ private slots:
     void onFixUpdated(const GpsFix &fix);
     void onSurveyInUpdated(const SurveyInStatus &status);
     void onVerifyTimeout();
+    // Vangnet voor modules/firmware die de CFG-TMODE POLL (leeg bericht)
+    // afwijzen (NAK) maar een echt Set-commando (met inhoud) mogelijk wél
+    // accepteren — sommige (vooral goedkopere) implementaties hebben dat
+    // soort asymmetrie. Zie main.cpp/GpsLink.h voor de aanleiding: op
+    // Wilfreds echte LEA-5T kwam een NAK terug op de poll, terwijl de
+    // doos toch echt "5T" (timing-variant) vermeldt.
+    void onAckReceived(quint8 msgClass, quint8 msgId, bool acked);
 
 private:
     enum class State {
@@ -122,6 +129,11 @@ private:
     // load of save), hoeft onFixUpdated() niet bij elke fix (1Hz) opnieuw
     // stiekem te controleren of het bootstrap-pad nog van toepassing is.
     bool m_persistedFileConfirmed = false;
+
+    // Eenmalig: voorkomt dat de NAK-op-poll-fallback (onAckReceived)
+    // zichzelf blijft herhalen als ook het rechtstreekse Set-commando
+    // steeds opnieuw een NAK oplevert.
+    bool m_triedDirectSetFallback = false;
 
     quint32 m_minDurationSeconds = 0;
     quint32 m_varLimitMm2 = 0;
