@@ -101,6 +101,8 @@
 #include <QObject>
 #include <QSerialPort>
 #include <QByteArray>
+#include <QString>
+#include <QStringList>
 #include <QList>
 
 struct GpsSatellite {
@@ -239,6 +241,14 @@ signals:
     // (dus bv. 0x06/0x1D voor een CFG-TMODE-commando), niet van deze
     // ACK/NAK zelf.
     void ackReceived(quint8 msgClass, quint8 msgId, bool acked);
+    // Antwoord op de MON-VER-poll die open() automatisch verstuurt (zuiver
+    // informatief, geen configuratiewijziging) — software-/hardware-
+    // versiestring plus de "extension"-regels die de module zelf
+    // rapporteert. Toegevoegd om te kunnen VERIFIËREN of deze specifieke
+    // module zichzelf als timing-capable identificeert, nadat CFG-TMODE in
+    // de praktijk een NAK opleverde op echte hardware — zie main.cpp.
+    void versionInfoReceived(const QString &swVersion, const QString &hwVersion,
+                              const QStringList &extensions);
     void errorOccurred(const QString &message);
 
 private slots:
@@ -257,6 +267,7 @@ private:
     void handleTimSvin(const QByteArray &payload);
     void handleCfgTmodeResponse(const QByteArray &payload);
     void handleAck(const QByteArray &payload, bool acked);
+    void handleMonVer(const QByteArray &payload);
 
     QSerialPort m_port;
     QByteArray  m_rxBuffer;

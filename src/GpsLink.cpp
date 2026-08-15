@@ -24,6 +24,17 @@ constexpr quint8 kIdTimSvin = 0x04;
 constexpr quint8 kClassAck = 0x05;
 constexpr quint8 kIdAckNak = 0x00;
 constexpr quint8 kIdAckAck = 0x01;
+constexpr quint8 kClassMon = 0x0A;
+constexpr quint8 kIdMonVer = 0x04;
+
+// Leest een vast-lengte, zero-terminated CH[n]-veld uit een payload als
+// QString — MON-VER (en een paar andere UBX-berichten) gebruiken dit
+// patroon voor tekstvelden i.p.v. lengte-prefixen.
+QString readFixedCString(const QByteArray &payload, int offset, int len) {
+    const QByteArray raw = payload.mid(offset, len);
+    const int nul = raw.indexOf('\0');
+    return QString::fromLatin1(nul >= 0 ? raw.left(nul) : raw);
+}
 
 // Kleine helpers om little-endian 32-bit velden in een CFG-payload op te
 // bouwen — de rest van dit bestand doet alleen het omgekeerde (uitlezen via
@@ -60,6 +71,13 @@ bool GpsLink::open(const QString &portName) {
     m_rxBuffer.clear();
     m_lastFix = GpsFix{};
     enablePeriodicMessages();
+
+    // Zuiver informatief, eenmalig: vraag de software-/hardwareversie op
+    // (MON-VER, 0x0A 0x04, leeg-payload Poll Request net als CFG-TMODE
+    // hierboven). Geen configuratiewijziging, dus geen enkel risico —
+    // toegevoegd om te kunnen verifiëren of deze module zichzelf als
+    // timing-capable identificeert, zie versionInfoReceived() in de header.
+    m_port.write(buildFrame(kClassMon, kIdMonVer, QByteArray()));
     return true;
 }
 
@@ -256,6 +274,8 @@ void GpsLink::dispatch(quint8 msgClass, quint8 msgId, const QByteArray &payload)
         handleAck(payload, true);
     } else if (msgClass == kClassAck && msgId == kIdAckNak) {
         handleAck(payload, false);
+    } else if (msgClass == kClassMon && msgId == kIdMonVer) {
+        handleMonVer(payload);
     }
     // Andere klasse/id-combinaties (bv. ACK-ACK op onze CFG-MSG-commando's)
     // worden bewust genegeerd — dit is geen generieke UBX-bibliotheek, alleen
@@ -396,4 +416,23 @@ void GpsLink::handleAck(const QByteArray &payload, bool acked) {
     const quint8 ackedClass = static_cast<quint8>(payload[0]);
     const quint8 ackedId = static_cast<quint8>(payload[1]);
     emit ackReceived(ackedClass, ackedId, acked);
+}
+
+void GpsLink::handleMonVer(const QByteArray &payload) {
+    // 40 + 30*Num bytes: swVersion(CH[30]) hwVersion(CH[10]) gevolgd door
+    // Num × extension(CH[30]) — zie GpsLink.h/spec-verwijzing bij
+    // versionInfoReceived().
+    if (payload.size() < 40)
+        return;
+    const QString sw = readFixedCString(payload, 0, 30);
+    const QString hw = readFixedCString(payload, 30, 10);
+
+    QStringList extensions;
+    for (int off = 40; off + 30 <= payload.size(); off += 30) {
+        const QString ext = readFixedCString(payload, off, 30);
+        if (!ext.isEmpty())
+            extensions.append(ext);
+    }
+
+    emit versionInfoReceived(sw, hw, extensions);
 }

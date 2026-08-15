@@ -128,6 +128,18 @@ int main(int argc, char *argv[]) {
         }
     });
 
+    // Puur diagnostisch: laat zien wat de module zelf claimt te zijn/kunnen
+    // (MON-VER, automatisch gepolld door GpsLink::open()) — toegevoegd om
+    // te kunnen verifiëren of deze fysieke module zichzelf als "timing"-
+    // capable identificeert, nadat CFG-TMODE in de praktijk een NAK bleek
+    // op te leveren.
+    QObject::connect(&gpsLink, &GpsLink::versionInfoReceived, &app,
+                      [](const QString &sw, const QString &hw, const QStringList &extensions) {
+        QTextStream(stderr) << "GPS MON-VER — software: " << sw << ", hardware: " << hw << "\n";
+        for (const QString &ext : extensions)
+            QTextStream(stderr) << "GPS MON-VER — extensie: " << ext << "\n";
+    });
+
     if (parser.isSet(gpsOpt)) {
         if (gpsLink.open(parser.value(gpsOpt))) {
             const quint32 minDurationS = parser.value(surveyInMinDurOpt).toUInt();
