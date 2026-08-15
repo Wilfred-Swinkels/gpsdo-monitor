@@ -8,12 +8,14 @@ import QtQuick 2.15
 // nodig), en een decoratieve "stardate"-regel rechts uitgelijnd.
 //
 // Sterrenbeelden-achtergrond: dezelfde echte sterrencatalogus + Alt/Az-
-// berekening als SkyplotPage.qml (zelfde tijd, zelfde GPS-positie), heel
-// vaag getekend ACHTER de wijzerplaat-tick-marks/wijzers — dus letterlijk
-// de sterrenhemel boven de opstelplek op dit moment, niet een verzonnen
-// patroon. Bewust géén losse Theme/singleton-herbruik (project vermijdt
-// QML-singletons, zie projectbrief) — de astronomie-functies zijn hier
-// gedupliceerd, net als bij de andere self-contained pagina's.
+// berekening als SkyplotPage.qml (zelfde tijd, zelfde GPS-positie), ACHTER
+// de wijzerplaat-tick-marks/wijzers getekend — dus letterlijk de
+// sterrenhemel boven de opstelplek op dit moment, niet een verzonnen
+// patroon. Helderheid van lijnen/sterren op verzoek gelijkgetrokken met de
+// skyplot-pagina (zelfde rgba-waarden). Bewust géén losse Theme/singleton-
+// hergebruik (project vermijdt QML-singletons, zie projectbrief) — de
+// astronomie-functies zijn hier gedupliceerd, net als bij de andere
+// self-contained pagina's.
 
 Item {
     id: page
@@ -286,8 +288,8 @@ Item {
                             if (aa.alt > 0) pos[name] = aa
                         }
 
-                        ctx.strokeStyle = "rgba(160,175,205,0.16)"
-                        ctx.lineWidth = 1 * page.uiScale
+                        ctx.strokeStyle = "rgba(210,220,255,0.55)"
+                        ctx.lineWidth = 1.3 * page.uiScale
                         for (var c = 0; c < page.constellationLines.length; c++) {
                             var segs = page.constellationLines[c]
                             for (var l = 0; l < segs.length; l++) {
@@ -301,10 +303,14 @@ Item {
                         for (var starName in pos) {
                             var mag = page.starCatalog[starName][2]
                             var sp = skyPolar(pos[starName].alt, pos[starName].az)
-                            var sr = Math.max(0.6, (2.0 - mag * 0.3)) * page.uiScale
+                            var sr = Math.max(1.1, (3.0 - mag * 0.35)) * page.uiScale
                             ctx.beginPath()
                             ctx.arc(sp[0], sp[1], sr, 0, 2 * Math.PI)
-                            ctx.fillStyle = "rgba(220,228,245,0.35)"
+                            ctx.fillStyle = "rgba(255,255,255,0.98)"
+                            ctx.fill()
+                            ctx.beginPath()
+                            ctx.arc(sp[0], sp[1], sr * 2.2, 0, 2 * Math.PI)
+                            ctx.fillStyle = "rgba(210,225,255,0.18)"
                             ctx.fill()
                         }
                     }
