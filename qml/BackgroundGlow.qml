@@ -1,14 +1,20 @@
 import QtQuick 2.15
 
-// BackgroundGlow.qml — hoek-gloed (rust linksboven/onder, ijsblauw
+// BackgroundGlow.qml — hoek-gloed (rood linksboven/onder, blauw
 // rechtsboven/onder) + een zwak 40px technisch raster, precies de
 // achtergrond-truc uit de HTML-mockup (".device" se radial-gradients).
 // Eén keer getekend (geen doorlopende animatie) — goedkoop voor de Pi.
+//
+// Bewust FELLERE, apart benoemde rood/blauw-tinten i.p.v. de gedempte
+// colGold/colIce-paletkleuren die de rest van de UI gebruikt — op verzoek
+// duidelijk zichtbaar, niet subtiel.
 
 Canvas {
     id: root
     property color colGold: "#f3714f"
     property color colIce: "#80c8ec"
+    property color colRed: "#e5372b"
+    property color colBlue: "#2f6fed"
 
     onPaint: {
         var ctx = getContext("2d")
@@ -23,12 +29,12 @@ Canvas {
             ctx.fillStyle = g
             ctx.fillRect(0, 0, W, H)
         }
-        radial(W * 0.06, H * 0.04, root.colGold, 0.10, 0.42)
-        radial(W * 0.96, H * 0.08, root.colIce, 0.07, 0.38)
-        radial(W * 0.90, H * 0.96, root.colIce, 0.08, 0.42)
-        radial(W * 0.04, H * 0.90, root.colGold, 0.06, 0.38)
+        radial(W * 0.04, H * 0.02, root.colRed, 0.55, 0.62)
+        radial(W * 0.98, H * 0.06, root.colBlue, 0.50, 0.58)
+        radial(W * 0.94, H * 0.98, root.colBlue, 0.50, 0.62)
+        radial(W * 0.02, H * 0.94, root.colRed, 0.45, 0.58)
 
-        ctx.strokeStyle = Qt.rgba(root.colIce.r, root.colIce.g, root.colIce.b, 0.05)
+        ctx.strokeStyle = Qt.rgba(root.colIce.r, root.colIce.g, root.colIce.b, 0.06)
         ctx.lineWidth = 1
         var step = 40
         for (var x = 0; x <= W; x += step) {
