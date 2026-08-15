@@ -83,7 +83,7 @@ Item {
             }
         }
 
-        // --- Accuracy-strip (Δf/f) ------------------------------------------
+        // --- Accuracy-strip (Δf/f) — dubbele hoogte, grotere tekst ----------
         Rectangle {
             id: accStrip1
             anchors.top: lockHero.bottom
@@ -91,7 +91,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: 10 * page.uiScale
-            height: 44 * page.uiScale
+            height: 88 * page.uiScale
             radius: 6 * page.uiScale
             color: page.colTile2
 
@@ -101,20 +101,20 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Δf/f"
                 color: page.colInkDim
-                font.pixelSize: 13 * page.uiScale
+                font.pixelSize: 15 * page.uiScale
             }
             Text {
                 anchors.right: parent.right
                 anchors.rightMargin: 16 * page.uiScale
                 anchors.left: parent.left
-                anchors.leftMargin: 60 * page.uiScale
+                anchors.leftMargin: 90 * page.uiScale
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideLeft
                 anchors.verticalCenter: parent.verticalCenter
                 text: gpsdoModel.accuracyText
                 color: page.colGold
                 font.family: "monospace"
-                font.pixelSize: 16 * page.uiScale
+                font.pixelSize: 28 * page.uiScale
                 font.bold: true
             }
         }
@@ -131,7 +131,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: 10 * page.uiScale
-            height: 44 * page.uiScale
+            height: 88 * page.uiScale
             radius: 6 * page.uiScale
             color: page.colTile2
 
@@ -139,12 +139,12 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: 16 * page.uiScale
                 anchors.right: parent.right
-                anchors.rightMargin: 60 * page.uiScale
+                anchors.rightMargin: 90 * page.uiScale
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideRight
                 text: "Lampspanning — veroudering"
                 color: page.colInkDim
-                font.pixelSize: 12 * page.uiScale
+                font.pixelSize: 14 * page.uiScale
             }
             Text {
                 anchors.right: parent.right
@@ -153,7 +153,7 @@ Item {
                 text: "—"
                 color: page.colInkDim
                 font.family: "monospace"
-                font.pixelSize: 15 * page.uiScale
+                font.pixelSize: 26 * page.uiScale
             }
         }
 
