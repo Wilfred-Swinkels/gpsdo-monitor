@@ -1,9 +1,11 @@
 import QtQuick 2.15
 
-// ChronoDigitalPage.qml — pagina 6: twee even grote digi-groups naast
-// elkaar: links lokale tijd (CEST, goud), rechts UTC (ijsblauw), elk met
-// H/M/S in omrande blokken en knipperende ':'-scheidingstekens, plus een
-// gedeelde datumregel per kant en een gedeelde stardate-regel onderaan.
+// ChronoDigitalPage.qml — pagina 6: twee even grote digi-groups BOVEN
+// elkaar (niet naast elkaar — zie ".digi-hero{flex-direction:column}" in de
+// mockup): bovenaan lokale tijd (CEST, goud), onderaan UTC (ijsblauw), elk
+// met H/M/S in omrande blokken (met wat lucht ertussen) en knipperende
+// ':'-scheidingstekens, plus een datumregel per kant en een gedeelde
+// stardate-regel onderaan.
 
 Item {
     id: page
@@ -44,14 +46,17 @@ Item {
         return page.dayNames[d.getDay()] + " " + pad2(d.getDate()) + "-" + pad2(d.getMonth() + 1) + "-" + d.getFullYear()
     }
 
+    // Achtergrond bewust transparant — de gedeelde sterrenveld/hoek-gloed-
+    // achtergrond zit al achter de swipebare pagina's in main.qml, een eigen
+    // opake achtergrond hier zou die overschilderen.
     Rectangle {
         anchors.fill: parent
-        color: page.colBg
+        color: "transparent"
 
         Column {
             anchors.fill: parent
             anchors.margins: 14 * page.uiScale
-            spacing: 10 * page.uiScale
+            spacing: 8 * page.uiScale
 
             PageTitle {
                 width: parent.width
@@ -61,16 +66,17 @@ Item {
                 text: "Chronometer — digitaal"
             }
 
-            Row {
-                id: groupsRow
+            // --- twee groepen BOVEN elkaar (niet naast elkaar) ---------------
+            Column {
+                id: groupsColumn
                 width: parent.width
-                height: parent.height - 24 * page.uiScale - stardateFooter.height - 2 * (10 * page.uiScale)
+                height: parent.height - 24 * page.uiScale - stardateFooter.height - 2 * (8 * page.uiScale)
                 spacing: 10 * page.uiScale
 
                 // --- lokale tijd (CEST) ---------------------------------
                 Rectangle {
-                    width: (groupsRow.width - groupsRow.spacing) / 2
-                    height: groupsRow.height
+                    width: parent.width
+                    height: (groupsColumn.height - groupsColumn.spacing) / 2
                     radius: 14 * page.uiScale
                     color: page.colSurface
                     border.width: 1
@@ -84,27 +90,27 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "LOKAAL — CEST"
                             color: page.colGold
-                            font.pixelSize: 12 * page.uiScale
+                            font.pixelSize: 13 * page.uiScale
                             font.letterSpacing: 1
                             font.bold: true
                         }
 
                         Row {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 4 * page.uiScale
+                            spacing: 10 * page.uiScale
 
                             Repeater {
                                 model: [ page.pad2(page.localDate().getHours()),
                                          page.pad2(page.localDate().getMinutes()),
                                          page.pad2(page.localDate().getSeconds()) ]
                                 delegate: Row {
-                                    spacing: 4 * page.uiScale
+                                    spacing: 10 * page.uiScale
                                     Rectangle {
-                                        width: 44 * page.uiScale
-                                        height: 44 * page.uiScale
-                                        radius: 8 * page.uiScale
+                                        width: 54 * page.uiScale
+                                        height: 54 * page.uiScale
+                                        radius: 10 * page.uiScale
                                         color: page.colTile
-                                        border.width: 1
+                                        border.width: 2 * page.uiScale
                                         border.color: page.colGold
                                         Text {
                                             anchors.centerIn: parent
@@ -112,7 +118,7 @@ Item {
                                             color: page.colGold
                                             font.family: "monospace"
                                             font.bold: true
-                                            font.pixelSize: 22 * page.uiScale
+                                            font.pixelSize: 26 * page.uiScale
                                         }
                                     }
                                     Text {
@@ -122,7 +128,7 @@ Item {
                                         color: page.colGold
                                         opacity: page.blinkOn ? 1.0 : 0.15
                                         font.bold: true
-                                        font.pixelSize: 26 * page.uiScale
+                                        font.pixelSize: 28 * page.uiScale
                                     }
                                 }
                             }
@@ -140,8 +146,8 @@ Item {
 
                 // --- UTC --------------------------------------------------
                 Rectangle {
-                    width: (groupsRow.width - groupsRow.spacing) / 2
-                    height: groupsRow.height
+                    width: parent.width
+                    height: (groupsColumn.height - groupsColumn.spacing) / 2
                     radius: 14 * page.uiScale
                     color: page.colSurface
                     border.width: 1
@@ -155,27 +161,27 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "UTC"
                             color: page.colIce
-                            font.pixelSize: 12 * page.uiScale
+                            font.pixelSize: 13 * page.uiScale
                             font.letterSpacing: 1
                             font.bold: true
                         }
 
                         Row {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 4 * page.uiScale
+                            spacing: 10 * page.uiScale
 
                             Repeater {
                                 model: [ page.pad2(page.now.getHours()),
                                          page.pad2(page.now.getMinutes()),
                                          page.pad2(page.now.getSeconds()) ]
                                 delegate: Row {
-                                    spacing: 4 * page.uiScale
+                                    spacing: 10 * page.uiScale
                                     Rectangle {
-                                        width: 44 * page.uiScale
-                                        height: 44 * page.uiScale
-                                        radius: 8 * page.uiScale
+                                        width: 54 * page.uiScale
+                                        height: 54 * page.uiScale
+                                        radius: 10 * page.uiScale
                                         color: page.colTile
-                                        border.width: 1
+                                        border.width: 2 * page.uiScale
                                         border.color: page.colIce
                                         Text {
                                             anchors.centerIn: parent
@@ -183,7 +189,7 @@ Item {
                                             color: page.colIce
                                             font.family: "monospace"
                                             font.bold: true
-                                            font.pixelSize: 22 * page.uiScale
+                                            font.pixelSize: 26 * page.uiScale
                                         }
                                     }
                                     Text {
@@ -193,7 +199,7 @@ Item {
                                         color: page.colIce
                                         opacity: page.blinkOn ? 1.0 : 0.15
                                         font.bold: true
-                                        font.pixelSize: 26 * page.uiScale
+                                        font.pixelSize: 28 * page.uiScale
                                     }
                                 }
                             }

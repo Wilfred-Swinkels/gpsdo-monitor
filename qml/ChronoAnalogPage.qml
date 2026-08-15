@@ -42,14 +42,16 @@ Item {
         return 40000 + dayFrac * 30
     }
 
+    // Achtergrond bewust transparant — de gedeelde sterrenveld/hoek-gloed-
+    // achtergrond zit al achter de swipebare pagina's in main.qml.
     Rectangle {
         anchors.fill: parent
-        color: page.colBg
+        color: "transparent"
 
         Column {
             anchors.fill: parent
-            anchors.margins: 14 * page.uiScale
-            spacing: 10 * page.uiScale
+            anchors.margins: 12 * page.uiScale
+            spacing: 6 * page.uiScale
 
             PageTitle {
                 width: parent.width
@@ -61,9 +63,9 @@ Item {
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8 * page.uiScale
 
                 ZoomToggle {
+                    id: tzToggle
                     uiScale: page.uiScale
                     colTile: page.colTile
                     colBorder: page.colBorder
@@ -77,9 +79,11 @@ Item {
 
             Canvas {
                 id: clock
-                property real size: Math.min(parent.width, page.height * 0.55)
                 width: parent.width
-                height: parent.height - 24 * page.uiScale - 28 * page.uiScale - tzLabel.height - stardateRow.height - 4 * (10 * page.uiScale)
+                // Meer ruimte voor de wijzerplaat: kleinere marges/spacing
+                // hierboven + de knop-hoogte van de toggle zelf i.p.v. een
+                // vaste 28px-gok, zodat de klok zo groot mogelijk wordt.
+                height: parent.height - 24 * page.uiScale - tzToggle.height - tzLabel.height - stardateRow.height - 4 * (6 * page.uiScale)
 
                 function hand(ctx, cx, cy, angle, len, width, color, tail) {
                     var x2 = cx + len * Math.sin(angle)
@@ -100,7 +104,7 @@ Item {
                     var W = width, H = height
                     ctx.clearRect(0, 0, W, H)
                     var cx = W / 2, cy = H / 2
-                    var R = Math.min(W, H) / 2 - 10 * page.uiScale
+                    var R = Math.min(W, H) / 2 - 6 * page.uiScale
 
                     ctx.beginPath()
                     ctx.arc(cx, cy, R, 0, 2 * Math.PI)

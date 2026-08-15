@@ -63,7 +63,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: page.colBg
+        color: "transparent"
 
         Column {
             anchors.fill: parent

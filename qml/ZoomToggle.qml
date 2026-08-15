@@ -15,7 +15,7 @@ Row {
     property color colInkDim: "#7d8296"
     signal selected(var value)
 
-    spacing: 6 * uiScale
+    spacing: 12 * uiScale
     height: 28 * uiScale
 
     Repeater {

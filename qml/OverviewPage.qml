@@ -53,7 +53,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: page.colBg
+        color: "transparent"
 
         // --- Lock hero — alleen state, geen DAC-waarde meer hier -----------
         // DAC-waarde staat (zoals afgesproken) in de 6-tegel-grid hieronder,
