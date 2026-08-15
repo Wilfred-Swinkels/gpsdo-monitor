@@ -262,7 +262,11 @@ Item {
                         var r = (7 + (sat.cno / 50) * 6) * page.uiScale
                         ctx.beginPath()
                         ctx.arc(satPos[0], satPos[1], r, 0, 2 * Math.PI)
-                        ctx.fillStyle = page.cn0Color(sat.cno)
+                        // Actief in de fix (usedInFix) -> fel geel, in plaats
+                        // van de normale CN0-signaalsterkte-kleur — zo is in
+                        // één oogopslag te zien welke sats daadwerkelijk
+                        // meetellen, los van hoe sterk hun signaal is.
+                        ctx.fillStyle = sat.usedInFix ? "#ffe600" : page.cn0Color(sat.cno)
                         ctx.fill()
                         ctx.strokeStyle = "#000000"
                         ctx.lineWidth = 1.5
