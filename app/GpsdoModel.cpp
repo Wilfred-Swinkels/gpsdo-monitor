@@ -8,6 +8,7 @@
 
 #include <QtMath>
 #include <QDateTime>
+#include <cmath>
 
 GpsdoModel::GpsdoModel(QObject *parent) : QObject(parent) {
 }
@@ -39,6 +40,22 @@ void GpsdoModel::onFllStatus(const FllStatus &status) {
             m_lockStartEpoch = QDateTime::currentMSecsSinceEpoch() / 1000.0;
         }
         pushAccHistoryPoint();
+
+        // Lopend gemiddelde, ALLEEN over samples tijdens een ononderbroken
+        // "L"-periode — zie computeAccuracyAvgValue()/accuracyAvgText()
+        // hieronder voor het waarom (middelt kwantisatieruis weg, maar is
+        // zinloos tijdens Unlocked/Holdover, dus dan resetten i.p.v. door-
+        // middelen met acquisitie-ruis).
+        if (status.state == QLatin1Char('L')) {
+            if (m_avgAccCount == 0)
+                m_avgAccWindowStartEpoch = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+            m_avgAccSum += computeAccuracyValue();
+            ++m_avgAccCount;
+        } else {
+            m_avgAccSum = 0.0;
+            m_avgAccCount = 0;
+            m_avgAccWindowStartEpoch = 0.0;
+        }
     }
 }
 
@@ -115,6 +132,50 @@ QString GpsdoModel::accuracyText() const {
         .arg(deltaFOverF >= 0 ? QStringLiteral("+") : QString())
         .arg(deltaFOverF, 0, 'e', 2)
         .arg(deltaFHz, 0, 'f', 3);
+}
+
+double GpsdoModel::computeAccuracyAvgValue() const {
+    if (m_avgAccCount == 0)
+        return 0.0;
+    return m_avgAccSum / static_cast<double>(m_avgAccCount);
+}
+
+// Softwarematig lopend gemiddelde van dezelfde Δf/f-waarde als
+// accuracyText(), opgebouwd sinds het begin van de huidige ononderbroken
+// "L"-periode. Doel: computeAccuracyValue() is gekwantiseerd in stappen van
+// 6,25e-9 (1 LSB van de 16-bit freq.-teller over 16s) — een enkele sample
+// kan dus nooit fijner tonen dan dat, en pendelt vaak gewoon tussen 0 en
+// ±1 LSB. Door veel van die samples te middelen (klassieke oversampling,
+// zelfde principe als een gedithered ADC) verdwijnt die kwantisatiestap
+// geleidelijk uit het gemiddelde, en kan de uitlezing na lang genoeg
+// middelen (orde grootte uren) dieper dan 1e-9/1e-10 gaan — begrensd door
+// de werkelijke ruis van de Rb-bron zelf, niet meer door deze rekenkundige
+// vloer. Bewust GEEN wijziging aan de FLL-averaging-mode (M01/M02) — dat
+// zou de acquisitie/lock-strategie raken (zie FllLink), dit is puur een
+// weergave-berekening op de al binnenkomende statuslijnen.
+QString GpsdoModel::accuracyAvgText() const {
+    if (m_avgAccCount == 0)
+        return QStringLiteral("gem: wacht op ononderbroken lock");
+
+    const double avg = computeAccuracyAvgValue();
+    const double windowSec = QDateTime::currentMSecsSinceEpoch() / 1000.0 - m_avgAccWindowStartEpoch;
+
+    QString windowText;
+    if (windowSec < 90.0) {
+        windowText = QStringLiteral("%1s").arg(qRound(windowSec));
+    } else if (windowSec < 3600.0) {
+        windowText = QStringLiteral("%1m").arg(qRound(windowSec / 60.0));
+    } else {
+        const int hours = static_cast<int>(windowSec / 3600.0);
+        const int mins = qRound(std::fmod(windowSec, 3600.0) / 60.0);
+        windowText = QStringLiteral("%1u%2m").arg(hours).arg(mins, 2, 10, QLatin1Char('0'));
+    }
+
+    return QStringLiteral("gem. %1 (%2x): %3%4")
+        .arg(windowText)
+        .arg(m_avgAccCount)
+        .arg(avg >= 0 ? QStringLiteral("+") : QString())
+        .arg(avg, 0, 'e', 3);
 }
 
 QString GpsdoModel::freqReadoutHex() const {

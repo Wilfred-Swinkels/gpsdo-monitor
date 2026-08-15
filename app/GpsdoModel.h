@@ -37,6 +37,12 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(QString lockSubText READ lockSubText NOTIFY fllChanged)
     Q_PROPERTY(QString dacHex READ dacHex NOTIFY fllChanged)
     Q_PROPERTY(QString accuracyText READ accuracyText NOTIFY fllChanged)
+    // Langzaam verfijnend gemiddelde van accuracyText's onderliggende
+    // Δf/f-waarde, opgebouwd sinds het begin van de HUIDIGE ononderbroken
+    // L-periode (reset bij elke Unlocked/Holdover) — middelt de 6,25e-9-
+    // kwantisatie van een losse 16s-sample geleidelijk weg. Zie de
+    // toelichting bij computeAccuracyAvgValue() in de .cpp.
+    Q_PROPERTY(QString accuracyAvgText READ accuracyAvgText NOTIFY fllChanged)
 
     // Gedetailleerde FLL-velden, voor de FLL-state-pagina (osc-grid + status-tiles).
     Q_PROPERTY(QString freqReadoutHex READ freqReadoutHex NOTIFY fllChanged)
@@ -89,6 +95,7 @@ public:
     QString lockSubText() const;
     QString dacHex() const;
     QString accuracyText() const;
+    QString accuracyAvgText() const;
     QString freqReadoutHex() const;
     QString sampleCounterHex() const;
     QString accumDiffHex() const;
@@ -131,12 +138,21 @@ private slots:
 
 private:
     double computeAccuracyValue() const; // Δf/f als kommagetal, uit m_fllStatus
+    double computeAccuracyAvgValue() const; // lopend gemiddelde sinds huidige L-periode
     void pushAccHistoryPoint();
 
     FllStatus m_fllStatus;
     GpsFix m_gpsFix;
     QList<GpsSatellite> m_satellites;
     QString m_rawFllLine;
+
+    // Lopend gemiddelde van computeAccuracyValue(), alleen opgebouwd tijdens
+    // een ononderbroken "L"-periode (reset bij elke Unlocked/Holdover — zie
+    // GpsdoModel.cpp voor het waarom). Puur software-matig, raakt de
+    // FLL-averaging-mode (M01/M02) niet aan.
+    double m_avgAccSum = 0.0;
+    qint64 m_avgAccCount = 0;
+    double m_avgAccWindowStartEpoch = 0.0;
 
     QVariantList m_accHistory;
     double m_lockStartEpoch = 0.0; // 0 = nog nooit gelockt sinds app-start
