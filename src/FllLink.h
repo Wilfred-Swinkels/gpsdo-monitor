@@ -6,12 +6,17 @@
 // (GPS_Std_UserMan_v1.1.pdf), secties 4.3, 4.4.2, 4.4.3, 4.4.4, 4.4.5, 5 en 6.
 //
 // Strategie in het kort (bronnen: zie .cpp):
-//  - Bij opstarten: forceer M02 (Sample Summing) + kleine S (0x000A = 10 samples)
-//    zodat de eerste lock zo snel mogelijk komt.
-//  - Zodra de FLL een aantal opeenvolgende cycli achter elkaar "L" (Locked)
-//    rapporteert: schakel over naar M01 (Sample Voting) + grote S (0x0200 = 512
-//    samples), de instelling die de handleiding zelf aanraadt voor de beste
-//    langetermijnnauwkeurigheid.
+//  - Bij het openen wordt eerst afgewacht welke staat het apparaat al heeft
+//    (het start toch al vanzelf, zie sectie 4.3) — pas op basis van de EERSTE
+//    ontvangen statusregel wordt besloten:
+//      - nog niet gelockt (U/H/D): forceer M02 (Sample Summing) + kleine S
+//        (0x000A = 10 samples) zodat de eerste lock zo snel mogelijk komt.
+//      - al gelockt (L): niet verstoren met de acquisitiefase — meteen als
+//        bevestigd beschouwen en naar steady-state schakelen.
+//  - Vanuit de acquisitiefase: zodra de FLL een aantal opeenvolgende cycli
+//    achter elkaar "L" (Locked) rapporteert, schakel over naar M01 (Sample
+//    Voting) + grote S (0x0200 = 512 samples), de instelling die de
+//    handleiding zelf aanraadt voor de beste langetermijnnauwkeurigheid.
 //  - N/L/H/F (negate/lock-limit/holdover-limit/coarse-fine-threshold) worden
 //    NIET aangeraakt: de handleiding zegt expliciet dat dit per GPS/VCXO-
 //    combinatie empirisch afgesteld moet worden (sectie 4.4.4) — dat is iets
@@ -86,6 +91,7 @@ private:
     Phase m_phase = Phase::Acquisition;
     int   m_consecutiveLocked = 0;
     bool  m_haveAcquiredLock = false;
+    bool  m_haveSeenFirstStatus = false; // bepaalt of open() de acquisitiefase start
 
     // --- Instellingen die de acquisitiesnelheid bepalen -----------------------
     // S = averaging cycle size (aantal 16s-samples per DAC-update).

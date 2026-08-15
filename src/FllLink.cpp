@@ -57,7 +57,15 @@ bool FllLink::open(const QString &portName) {
         return false;
     }
 
-    beginAcquisitionPhase();
+    // Bewust GEEN commando's sturen vóórdat we weten in welke staat het
+    // apparaat al verkeert (zie sectie 4.3: het start vanzelf, er is geen
+    // "aanzet"-commando nodig). Als we hier blind de acquisitiefase zouden
+    // starten, verstoren we een apparaat dat al gelockt en gestabiliseerd
+    // is onnodig terug naar de snelle/minder-nauwkeurige M02/S000A-modus —
+    // dat kost dan ~13 minuten (5 cycli × 160s) om weer terug te schakelen
+    // naar steady-state. Zie handleLine(): de eerste ontvangen statusregel
+    // bepaalt of we de acquisitiefase starten of meteen steady-state aannemen.
+    m_haveSeenFirstStatus = false;
     return true;
 }
 
@@ -128,6 +136,28 @@ void FllLink::handleLine(const QByteArray &line) {
     }
 
     emit statusUpdated(status);
+
+    if (!m_haveSeenFirstStatus) {
+        m_haveSeenFirstStatus = true;
+        if (status.state == QLatin1Char('L')) {
+            // Al gelockt bij het verbinden: niet onnodig verstoren met de
+            // acquisitiefase. Meteen als bevestigd beschouwen en naar de
+            // nauwkeurige steady-state-configuratie (M01/S0200) — we weten
+            // niet zeker welke M/S het apparaat op dit moment gebruikt
+            // (kan nog de vorige sessie zijn), dus expliciet zetten i.p.v.
+            // aannemen dat het al goed staat.
+            m_phase = Phase::Acquisition; // switchToSteadyStatePhase() verwacht dit
+            m_consecutiveLocked = kLockConfirmCycles;
+            m_haveAcquiredLock = true;
+            emit lockAcquired();
+            switchToSteadyStatePhase();
+        } else {
+            // Nog niet gelockt: dit is precies het geval waarvoor de
+            // snel-lock-strategie bedoeld is.
+            beginAcquisitionPhase();
+        }
+        return;
+    }
 
     if (status.state == QLatin1Char('L')) {
         if (++m_consecutiveLocked >= kLockConfirmCycles) {
