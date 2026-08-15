@@ -99,8 +99,9 @@ Item {
             // Altijd zichtbaar (i.p.v. conditioneel verborgen) zodat de
             // barChart-hoogte hieronder een vaste, eenvoudige aftrek kan
             // blijven — zelfde "—" bij geen data-conventie als de rest van
-            // de app. Alleen zinvol nadat de app met --start-survey-in
-            // gestart is, zie main.cpp/GpsLink.h.
+            // de app. GPS Time Mode start automatisch zodra --gps opgegeven
+            // is (geen aparte CLI-vlag meer nodig), zie main.cpp/
+            // TimeModeSupervisor.h.
             Text {
                 id: surveyInStatus
                 width: parent.width

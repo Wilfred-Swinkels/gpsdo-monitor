@@ -71,11 +71,14 @@
 //
 // Time Mode / Survey-In / Fixed Mode (CFG-TMODE, 0x06 0x1D) — WEL
 // geïmplementeerd (startSurveyIn()/disableTimeMode()), maar bewust NIET
-// automatisch bij elke open() gestuurd zoals de periodieke NAV-berichten
-// hierboven: dat zou een lopende, meerdere-uren-tot-dagen-durende Survey-In
-// bij elke app-herstart resetten. Moet dus expliciet getriggerd worden (zie
-// main.cpp, --start-survey-in) en is pas zinvol als de antenne al op haar
-// definitieve, permanente plek staat — zie projectbrief "Volgende stap".
+// automatisch bij elke open() vanuit DEZE klasse gestuurd zoals de
+// periodieke NAV-berichten hierboven: dat zou een lopende, meerdere-uren-
+// tot-dagen-durende Survey-In bij elke app-herstart resetten. In plaats
+// daarvan regelt `TimeModeSupervisor` (app/TimeModeSupervisor.h) dit één
+// laag hoger, en wordt die door main.cpp automatisch aangeroepen zodra
+// --gps opgegeven is — geen aparte CLI-vlag (meer) nodig. GpsLink zelf
+// blijft dus een dunne, kale protocollaag zonder eigen beleid; zie
+// TimeModeSupervisor.h voor de "wanneer/waarom"-logica.
 //
 //  UBX-CFG-TMODE (0x06 0x1D) payload (28 bytes), bron: officiële u-blox 5
 //  Protocol Specification (GPS.G5-X-07036-D), sectie "CFG-TMODE (0x06
@@ -192,20 +195,21 @@ public:
     // RAM zolang de USB-module stroom houdt — een herstart van gpsdo_app
     // (zonder dat de module zelf stroomloos is geweest) verandert daar
     // niets aan. Door hier altijd eerst te CHECKEN i.p.v. blind te
-    // versturen, is het veilig om --start-survey-in gewoon standaard in
-    // het opstartcommando te laten staan: een al lopende of al afgeronde
+    // versturen, is het veilig om dit gewoon automatisch bij elke app-start
+    // te laten lopen (zie TimeModeSupervisor::begin(), aangeroepen door
+    // main.cpp zodra --gps opgegeven is): een al lopende of al afgeronde
     // meting wordt nooit per ongeluk gereset door een simpele app-herstart.
     //
-    // Wat dit NIET doet: automatisch detecteren dat de antenne fysiek is
-    // verplaatst terwijl de module al in Fixed Mode staat. Dat kan deze
-    // hardware/Time Mode-generatie niet betrouwbaar zelf zien — eenmaal in
-    // Fixed Mode gaat de ontvanger er juist van uit dat de positie klopt en
-    // berekent geen onafhankelijke positie meer om tegen te vergelijken.
-    // Dus geen slimme heuristiek/giswerk hier (zelfde voorzichtige aanpak
-    // als bij N/L/H/F en de WWV-procedure elders in dit project) — een
-    // verplaatsing is een bewuste, menselijke actie en verdient een
-    // expliciete trigger: zie disableTimeMode() hierboven en main.cpp,
-    // --reset-survey-in.
+    // Wat DEZE functie (op zichzelf) niet doet: detecteren dat de antenne
+    // fysiek verplaatst is terwijl de module al in Fixed Mode staat — deze
+    // hardware/Time Mode-generatie berekent in Fixed Mode geen
+    // onafhankelijke positie meer om tegen te vergelijken, dus dat kan
+    // GpsLink hier niet zelf zien. Die detectie zit een laag hoger, in
+    // `TimeModeSupervisor` (app/TimeModeSupervisor.h): die roept, ALS
+    // requestAutoSurveyIn() hier een reeds-Fixed status terugmeldt, zelf
+    // disableTimeMode() aan om een verse 3D-fix te forceren en te
+    // vergelijken met de opgeslagen positie. Handmatig kan ook: zie
+    // disableTimeMode() hierboven en main.cpp, --reset-survey-in.
     bool requestAutoSurveyIn(quint32 minDurationSeconds, quint32 varLimitMm2);
 
     // Zet Time Mode direct op Fixed (timeMode=2) met EXPLICIETE ECEF-

@@ -26,12 +26,12 @@ void TimeModeSupervisor::begin(quint32 minDurationSeconds, quint32 varLimitMm2, 
     m_moveThresholdMeters = moveThresholdMeters;
 
     // Regelt zelf al het Disabled- ("start Survey-In") en Survey-In-lopend-
-    // geval ("laat met rust") — ongewijzigd t.o.v. het bestaande, veilige
-    // --start-survey-in-gedrag. Wij haken via timeModeReported() hierboven
-    // apart in op het Fixed-geval om te verifiëren.
+    // geval ("laat met rust") — de bestaande, veilige idempotente logica.
+    // Wij haken via timeModeReported() hierboven apart in op het Fixed-geval
+    // om te verifiëren.
     if (!m_gpsLink->requestAutoSurveyIn(minDurationSeconds, varLimitMm2)) {
         QTextStream(stderr) << "TimeModeSupervisor: kon Time Mode-status niet opvragen "
-                                "(--verify-position doet niets deze run).\n";
+                                "(GPS Time Mode doet niets deze run).\n";
     }
 }
 
@@ -45,11 +45,11 @@ void TimeModeSupervisor::onTimeModeReported(quint8 timeMode) {
     quint32 varMm2 = 0;
     if (!loadPersistedPosition(xcm, ycm, zcm, varMm2)) {
         // Allereerste keer dat deze feature draait terwijl de module al
-        // Fixed staat (bv. handmatig via --start-survey-in in een eerdere
-        // sessie, ver voor TimeModeSupervisor bestond) -- niets om tegen te
-        // vergelijken. Wacht op de eerstvolgende NAV-SOL met een geldige
-        // ECEF-positie (dat IS de huidige, al gefixeerde referentie) en
-        // sla die simpelweg op als startpunt voor toekomstige runs.
+        // Fixed staat (bv. een eerdere sessie van vóór TimeModeSupervisor
+        // bestond) -- niets om tegen te vergelijken. Wacht op de
+        // eerstvolgende NAV-SOL met een geldige ECEF-positie (dat IS de
+        // huidige, al gefixeerde referentie) en sla die simpelweg op als
+        // startpunt voor toekomstige runs.
         QTextStream(stderr) << "TimeModeSupervisor: module staat al Fixed maar er is nog geen "
                                 "opgeslagen referentiepositie -- huidige positie wordt als "
                                 "uitgangspunt vastgelegd (geen verificatie deze run).\n";

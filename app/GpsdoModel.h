@@ -69,9 +69,9 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(double gpsLatitude READ gpsLatitude NOTIFY gpsChanged)
     Q_PROPERTY(double gpsLongitude READ gpsLongitude NOTIFY gpsChanged)
 
-    // Time Mode Survey-In-voortgang (UBX-TIM-SVIN) — alleen zinvol nadat de
-    // app met --start-survey-in gestart is (zie main.cpp/GpsLink.h). Blijft
-    // op de "geen data"-staat staan als Survey-In niet aan staat.
+    // Time Mode Survey-In-voortgang (UBX-TIM-SVIN) — start automatisch
+    // zodra --gps opgegeven is (zie main.cpp/TimeModeSupervisor.h). Blijft
+    // op de "geen data"-staat staan zolang er nog geen Survey-In geweest is.
     Q_PROPERTY(bool surveyInActive READ surveyInActive NOTIFY surveyInChanged)
     Q_PROPERTY(bool surveyInValid READ surveyInValid NOTIFY surveyInChanged)
     Q_PROPERTY(QString surveyInDurationText READ surveyInDurationText NOTIFY surveyInChanged)

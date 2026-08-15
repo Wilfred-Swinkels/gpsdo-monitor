@@ -1,8 +1,11 @@
 #pragma once
 //
-// TimeModeSupervisor.h — optionele, opt-in orkestratie boven op GpsLink's
-// GPS Time Mode-functies (zie GpsLink.h), voor automatische "is de antenne
-// verplaatst?"-verificatie bij het opstarten van de app.
+// TimeModeSupervisor.h — automatische orkestratie boven op GpsLink's GPS
+// Time Mode-functies (zie GpsLink.h), voor de "is de antenne verplaatst?"-
+// verificatie bij het opstarten van de app. Draait ONVOORWAARDELIJK bij
+// elke app-start zodra --gps opgegeven is — geen aparte CLI-vlag nodig (op
+// Wilfreds expliciete verzoek: "ik wil geen extra cli handling doen, dit
+// moet automatisch gaan bij het starten van het programma"), zie main.cpp.
 //
 // Waarom dit een eigen klasse is en niet in GpsLink/GpsdoModel zit:
 //  - GpsLink is bewust een dunne UBX-protocollaag (parseert berichten,
@@ -55,7 +58,7 @@
 //                (geen nieuwe dagenlange Survey-In nodig).
 //              * Groter of gelijk: waarschijnlijk verplaatst -> een verse
 //                Survey-In starten (startSurveyIn(), dezelfde parameters als
-//                de reguliere --start-survey-in-flag).
+//                een normale automatische Survey-In).
 //  3. Elke keer dat een Survey-In daadwerkelijk voltooit (surveyInUpdated
 //     met valid==true && active==false) wordt het resultaat opgeslagen als
 //     de nieuwe "laatst bekend goede" positie — dit dekt zowel de eerste-
@@ -68,15 +71,13 @@
 // USB-module (bv. de Pi zelf herstart, of de module losgekoppeld) is er dus
 // verder niets meer om tegen te vergelijken zonder deze eigen opslag.
 //
-// Bewust WEL opt-in via een aparte CLI-vlag (--verify-position, zie
-// main.cpp) i.p.v. het standaardgedrag van --start-survey-in stilzwijgend
-// te veranderen: dit introduceert een echte trade-off die de zojuist
-// gebouwde zero-disruption default (GpsLink::requestAutoSurveyIn()) niet
-// heeft — bij elke app-herstart terwijl de module al Fixed staat, verliest
-// Time Mode voor de duur van de verificatie (typisch enkele tientallen
-// seconden) zijn volle nauwkeurigheid. Voor een module die weken/maanden
-// achter elkaar blijft draaien is dat zelden een probleem; voor iemand die
-// tijdens ontwikkeling de app vaak herstart, wel.
+// Trade-off om in gedachten te houden (bewust geaccepteerd door Wilfred):
+// dit introduceert een echte kost t.o.v. de eerder gebouwde zero-disruption
+// GpsLink::requestAutoSurveyIn() alleen — bij ELKE app-herstart terwijl de
+// module al Fixed staat, verliest Time Mode voor de duur van de verificatie
+// (typisch enkele tientallen seconden) zijn volle nauwkeurigheid, ook
+// tijdens gewoon itereren/herstarten in ontwikkeling. Voor een module die
+// weken/maanden achter elkaar blijft draaien maakt dat weinig uit.
 
 #include <QObject>
 #include <QString>

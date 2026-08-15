@@ -11,24 +11,25 @@
 // Gebruik:
 //   gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0
 //
-// GPS Time Mode Survey-In (--start-survey-in): bepaalt de vaste antenne-
-// positie door minuten tot dagen te middelen, en de LEA-5T schakelt daarna
-// zelf over naar Fixed Mode (zie GpsLink.h). Deze flag is IDEMPOTENT/veilig
-// om standaard in het opstartcommando te laten staan — bij elke app-start
-// wordt eerst de HUIDIGE Time Mode-status bij de module opgevraagd
-// (GpsLink::requestAutoSurveyIn()), en alleen als die nog op Disabled staat
-// wordt Survey-In daadwerkelijk gestart. Een module die al aan het surveyen
-// is, of al Fixed staat, wordt met rust gelaten — een simpele app-herstart
-// (zonder dat de USB-module zelf stroomloos is geweest) reset dus niets.
-//
-// Antenne verplaatst? Dat kan deze hardware niet zelf detecteren zodra hij
-// eenmaal Fixed staat (zie GpsLink.h) — gebruik dan expliciet
-// --reset-survey-in om een verse meting te forceren, OF zet --verify-position
-// aan om dit automatisch bij elke opstart te laten controleren (zie
-// TimeModeSupervisor.h). Dat laatste is bewust een aparte, opt-in vlag: het
-// kost een korte Time Mode-onderbreking bij ELKE herstart terwijl de module
-// al Fixed staat (typisch enkele tientallen seconden), wat --start-survey-in
-// hierboven expres niet doet.
+// GPS Time Mode (Survey-In / Fixed Mode, zie GpsLink.h/TimeModeSupervisor.h):
+// volledig AUTOMATISCH, geen CLI-vlag nodig — op Wilfreds expliciete
+// verzoek ("ik wil geen extra cli handling doen, dit moet automatisch gaan
+// bij het starten van het programma"). Zodra --gps opgegeven is en de poort
+// opent, regelt TimeModeSupervisor bij ELKE app-start zelf:
+//   - Module nog Disabled?            -> start een Survey-In.
+//   - Survey-In loopt al?             -> laat met rust.
+//   - Module staat al Fixed?          -> kort terug naar een gewone 3D-fix,
+//     positie verifiëren t.o.v. de eerder opgeslagen referentie; geen
+//     (relevante) afwijking -> Fixed Mode direct hersteld; wel een
+//     afwijking -> automatisch een verse Survey-In.
+// Dit kost dus bij ELKE herstart terwijl de module al Fixed staat een korte
+// Time Mode-onderbreking (typisch enkele tientallen seconden) — een
+// bewuste, door Wilfred geaccepteerde trade-off t.o.v. compleet stilzitten.
+// --survey-in-min-duration-s/--survey-in-accuracy-m/--verify-position-
+// threshold-m blijven optionele tuning-vlaggen met zinnige defaults (24u/
+// 2.0m/5.0m) — nergens verplicht. --reset-survey-in blijft beschikbaar als
+// bewuste, handmatige "ik weet zeker dat de antenne verplaatst is"-actie
+// die de automatische drempel-check overslaat.
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -59,11 +60,6 @@ int main(int argc, char *argv[]) {
 
     QCommandLineOption fllOpt("fll", "Seriele poort naar de VE2ZAZ FLL-controller (bv. /dev/ttyUSB0)", "device");
     QCommandLineOption gpsOpt("gps", "Seriele poort naar de u-blox LEA-5T (bv. /dev/ttyACM0)", "device");
-    QCommandLineOption surveyInOpt("start-survey-in",
-        "GPS Time Mode Survey-In (bepaalt de vaste antennepositie, schakelt daarna zelf over naar "
-        "Fixed Mode) - alleen zinvol als de antenne al op haar definitieve plek staat. Idempotent: "
-        "veilig om standaard aan te laten staan, checkt eerst de huidige status voordat er iets "
-        "gestart wordt (zie GpsLink.h).");
     QCommandLineOption surveyInMinDurOpt("survey-in-min-duration-s",
         "Minimale Survey-In-duur in seconden, ongeacht hoe snel de gevraagde nauwkeurigheid al "
         "gehaald wordt (default: 86400 = 24 uur)", "seconds", "86400");
@@ -72,24 +68,16 @@ int main(int argc, char *argv[]) {
         "meters", "2.0");
     QCommandLineOption resetSurveyInOpt("reset-survey-in",
         "Forceer een VERSE Survey-In, ook als er al een geldig resultaat/Fixed Mode actief is - "
-        "gebruik dit bewust nadat de antenne fysiek verplaatst is. Impliceert --start-survey-in.");
-    QCommandLineOption verifyPositionOpt("verify-position",
-        "Controleer bij ELKE opstart automatisch of de antenne verplaatst is t.o.v. de eerder "
-        "opgeslagen positie (kort terug naar normale 3D-fix, positie middelen, vergelijken) - "
-        "schakelt bij een (kleine) afwijking vanzelf een nieuwe Survey-In in, anders wordt de "
-        "bekende positie hersteld. Impliceert --start-survey-in-gedrag. Kost een korte Time "
-        "Mode-onderbreking bij elke herstart terwijl de module al Fixed staat (zie "
-        "TimeModeSupervisor.h) - daarom bewust NIET de --start-survey-in-default.");
+        "gebruik dit bewust nadat de antenne fysiek verplaatst is (slaat de automatische "
+        "afstandsdrempel-check over).");
     QCommandLineOption verifyThresholdOpt("verify-position-threshold-m",
-        "Vanaf hoeveel meter afwijking --verify-position de antenne als verplaatst beschouwt "
-        "(default: 5.0)", "meters", "5.0");
+        "Vanaf hoeveel meter afwijking de automatische opstart-verificatie de antenne als "
+        "verplaatst beschouwt (default: 5.0)", "meters", "5.0");
     parser.addOption(fllOpt);
     parser.addOption(gpsOpt);
-    parser.addOption(surveyInOpt);
     parser.addOption(surveyInMinDurOpt);
     parser.addOption(surveyInAccOpt);
     parser.addOption(resetSurveyInOpt);
-    parser.addOption(verifyPositionOpt);
     parser.addOption(verifyThresholdOpt);
     parser.process(app);
 
@@ -99,12 +87,13 @@ int main(int argc, char *argv[]) {
     gpsdoModel.attachFllLink(&fllLink);
     gpsdoModel.attachGpsLink(&gpsLink);
 
-    // Alleen aangemaakt als --verify-position gevraagd is; &app als parent
-    // zodat de levensduur gewoon de hele app.exec() overspant, net als
-    // fllLink/gpsLink/gpsdoModel hierboven (geen handmatige delete nodig).
-    TimeModeSupervisor *timeModeSupervisor = nullptr;
-    if (parser.isSet(verifyPositionOpt))
-        timeModeSupervisor = new TimeModeSupervisor(&gpsLink, &app);
+    // Onvoorwaardelijk aangemaakt (geen CLI-vlag meer nodig, zie toelichting
+    // bovenaan dit bestand) — gewoon een stack-object zoals fllLink/gpsLink/
+    // gpsdoModel hierboven, geen QObject-parent nodig (levensduur volgt
+    // gewoon de scope van main(), net als de rest). Onschuldig als --gps
+    // niet gebruikt wordt: begin() wordt dan hieronder simpelweg nooit
+    // aangeroepen, dus er gebeurt niets.
+    TimeModeSupervisor timeModeSupervisor(&gpsLink);
 
     if (parser.isSet(fllOpt)) {
         if (!fllLink.open(parser.value(fllOpt)))
@@ -124,44 +113,30 @@ int main(int argc, char *argv[]) {
 
     if (parser.isSet(gpsOpt)) {
         if (gpsLink.open(parser.value(gpsOpt))) {
-            const bool wantReset = parser.isSet(resetSurveyInOpt);
-            const bool wantVerify = parser.isSet(verifyPositionOpt);
-            // --verify-position impliceert hetzelfde "zorg dat er uiteindelijk
-            // een Survey-In/Fixed Mode actief is"-gedrag als --start-survey-in
-            // (zie de vlag-beschrijving hierboven) — geen aparte
-            // --start-survey-in ernaast nodig.
-            if (wantReset || wantVerify || parser.isSet(surveyInOpt)) {
-                const quint32 minDurationS = parser.value(surveyInMinDurOpt).toUInt();
-                const double accuracyM = parser.value(surveyInAccOpt).toDouble();
-                // Vereiste 3D-variantie in mm² = (gewenste stddev in mm)^2.
-                const double accuracyMm = accuracyM * 1000.0;
-                const quint32 varLimitMm2 = static_cast<quint32>(accuracyMm * accuracyMm);
+            const quint32 minDurationS = parser.value(surveyInMinDurOpt).toUInt();
+            const double accuracyM = parser.value(surveyInAccOpt).toDouble();
+            // Vereiste 3D-variantie in mm² = (gewenste stddev in mm)^2.
+            const double accuracyMm = accuracyM * 1000.0;
+            const quint32 varLimitMm2 = static_cast<quint32>(accuracyMm * accuracyMm);
+            const double thresholdM = parser.value(verifyThresholdOpt).toDouble();
 
-                if (wantReset) {
-                    // Bewuste "antenne verplaatst"-actie: eerst terug naar
-                    // Disabled, zodat de daaropvolgende requestAutoSurveyIn()
-                    // (die immers alleen bij Disabled iets doet) gegarandeerd
-                    // een verse meting start i.p.v. het oude resultaat te
-                    // laten staan.
-                    gpsLink.disableTimeMode();
-                    QTextStream(stderr) << "Time Mode teruggezet naar Disabled (--reset-survey-in) — "
-                                            "start een verse Survey-In.\n";
-                }
-
-                if (wantVerify) {
-                    const double thresholdM = parser.value(verifyThresholdOpt).toDouble();
-                    timeModeSupervisor->begin(minDurationS, varLimitMm2, thresholdM);
-                    QTextStream(stderr) << "Automatische positieverificatie actief (--verify-position): "
-                                            "drempel " << thresholdM << "m, min. Survey-In-duur "
-                                         << minDurationS << "s, doel-nauwkeurigheid " << accuracyM << "m\n";
-                } else if (gpsLink.requestAutoSurveyIn(minDurationS, varLimitMm2)) {
-                    QTextStream(stderr) << "Survey-In-status opgevraagd (start automatisch als nog "
-                                            "Disabled): min " << minDurationS << "s, doel-nauwkeurigheid "
-                                         << accuracyM << "m\n";
-                } else {
-                    QTextStream(stderr) << "Waarschuwing: kon Survey-In-status niet opvragen.\n";
-                }
+            if (parser.isSet(resetSurveyInOpt)) {
+                // Bewuste "antenne verplaatst"-actie: eerst terug naar
+                // Disabled, zodat TimeModeSupervisor::begin() hieronder
+                // (die bij Disabled altijd een Survey-In start) gegarandeerd
+                // een verse meting start i.p.v. het oude resultaat te
+                // laten staan of eerst de automatische drempel-check te doen.
+                gpsLink.disableTimeMode();
+                QTextStream(stderr) << "Time Mode teruggezet naar Disabled (--reset-survey-in) — "
+                                        "start een verse Survey-In.\n";
             }
+
+            // Altijd actief, geen CLI-vlag nodig — zie toelichting bovenaan
+            // dit bestand.
+            timeModeSupervisor.begin(minDurationS, varLimitMm2, thresholdM);
+            QTextStream(stderr) << "GPS Time Mode: automatische Survey-In/Fixed-verificatie actief "
+                                    "(min " << minDurationS << "s, doel-nauwkeurigheid " << accuracyM
+                                 << "m, verplaatsingsdrempel " << thresholdM << "m)\n";
         } else {
             QTextStream(stderr) << "Waarschuwing: kon GPS-seriele poort niet openen: " << parser.value(gpsOpt) << "\n";
         }
