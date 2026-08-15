@@ -2,8 +2,10 @@ import QtQuick 2.15
 
 // ChronoAnalogPage.qml — pagina 5: analoge klok (Canvas i.p.v. SVG, zelfde
 // tekentechniek als de HTML-mockup: 60 tick-marks, uur/minuut/seconde-
-// wijzers, gouden hub), een UTC/CEST-schakelaar, en een decoratieve
-// "stardate"-regel (puur cosmetisch, geen canonieke berekening).
+// wijzers, gouden hub), UTC/CEST-knoppen aan weerszijden (i.p.v. een
+// samen-gegroepeerde schakelaar in het midden — de knop zelf laat al zien
+// welke weergave actief is, dus geen aparte "Weergave: ..."-tekst meer
+// nodig), en een decoratieve "stardate"-regel rechts uitgelijnd.
 
 Item {
     id: page
@@ -61,29 +63,66 @@ Item {
                 text: "Chronometer — analoog"
             }
 
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
+            // --- UTC/CEST-knoppen aan weerszijden i.p.v. samen in het midden ---
+            Item {
+                id: toggleRow
+                width: parent.width
+                height: 32 * page.uiScale
 
-                ZoomToggle {
-                    id: tzToggle
-                    uiScale: page.uiScale
-                    colTile: page.colTile
-                    colBorder: page.colBorder
-                    colIce: page.colIce
-                    colInkDim: page.colInkDim
-                    options: [ { label: "UTC", value: "UTC" }, { label: "CEST", value: "CEST" } ]
-                    selectedValue: page.tzMode
-                    onSelected: (v) => page.tzMode = v
+                Rectangle {
+                    id: utcBtn
+                    anchors.left: parent.left
+                    height: parent.height
+                    width: utcLabel.implicitWidth + 26 * page.uiScale
+                    radius: height / 2
+                    color: page.tzMode === "UTC" ? page.colIce : page.colTile
+                    border.width: 2 * page.uiScale
+                    border.color: page.tzMode === "UTC" ? page.colIce : page.colBorder
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Text {
+                        id: utcLabel
+                        anchors.centerIn: parent
+                        text: "UTC"
+                        color: page.tzMode === "UTC" ? "#06232f" : page.colInkDim
+                        font.pixelSize: 14 * page.uiScale
+                        font.bold: true
+                        font.letterSpacing: 1 * page.uiScale
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: page.tzMode = "UTC" }
+                }
+
+                Rectangle {
+                    id: cestBtn
+                    anchors.right: parent.right
+                    height: parent.height
+                    width: cestLabel.implicitWidth + 26 * page.uiScale
+                    radius: height / 2
+                    color: page.tzMode === "CEST" ? page.colIce : page.colTile
+                    border.width: 2 * page.uiScale
+                    border.color: page.tzMode === "CEST" ? page.colIce : page.colBorder
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Text {
+                        id: cestLabel
+                        anchors.centerIn: parent
+                        text: "CEST"
+                        color: page.tzMode === "CEST" ? "#06232f" : page.colInkDim
+                        font.pixelSize: 14 * page.uiScale
+                        font.bold: true
+                        font.letterSpacing: 1 * page.uiScale
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: page.tzMode = "CEST" }
                 }
             }
 
             Canvas {
                 id: clock
                 width: parent.width
-                // Meer ruimte voor de wijzerplaat: kleinere marges/spacing
-                // hierboven + de knop-hoogte van de toggle zelf i.p.v. een
-                // vaste 28px-gok, zodat de klok zo groot mogelijk wordt.
-                height: parent.height - 24 * page.uiScale - tzToggle.height - tzLabel.height - stardateRow.height - 4 * (6 * page.uiScale)
+                // Nog meer ruimte voor de wijzerplaat: geen aparte
+                // "Weergave: ..."-regel meer (de knop toont dat al), dus één
+                // element en één spacing-gap minder dan voorheen.
+                height: parent.height - 24 * page.uiScale - toggleRow.height - stardateRow.height - 3 * (6 * page.uiScale)
 
                 function hand(ctx, cx, cy, angle, len, width, color, tail) {
                     var x2 = cx + len * Math.sin(angle)
@@ -104,7 +143,7 @@ Item {
                     var W = width, H = height
                     ctx.clearRect(0, 0, W, H)
                     var cx = W / 2, cy = H / 2
-                    var R = Math.min(W, H) / 2 - 6 * page.uiScale
+                    var R = Math.min(W, H) / 2 - 4 * page.uiScale
 
                     ctx.beginPath()
                     ctx.arc(cx, cy, R, 0, 2 * Math.PI)
@@ -157,17 +196,10 @@ Item {
                 onHeightChanged: requestPaint()
             }
 
-            Text {
-                id: tzLabel
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Weergave: " + page.tzMode + (page.tzMode === "CEST" ? " (+2)" : "")
-                color: page.colInkDim
-                font.pixelSize: 12 * page.uiScale
-            }
-
+            // --- stardate rechts uitgelijnd (geen "Weergave:"-regel meer) ---
             Row {
                 id: stardateRow
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.right: parent.right
                 spacing: 6 * page.uiScale
 
                 Text {
