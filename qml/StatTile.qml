@@ -56,7 +56,7 @@ Rectangle {
         horizontalAlignment: Text.AlignHCenter
         text: tile.value.toString()
         color: tile.colInk
-        font.pixelSize: 18 * tile.uiScale
+        font.pixelSize: 26 * tile.uiScale
         font.bold: true
         elide: Text.ElideRight
     }

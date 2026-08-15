@@ -118,14 +118,24 @@ Window {
         }
     }
 
-    // --- Linker rail -----------------------------------------------------
+    // --- Header-rail: dunne horizontale gradiëntlijn onder de header -----
+    // Dit is wat er in de originele HTML-mockup (.hdr-rail) staat: een 3px
+    // horizontale lijn goud -> ijsblauw -> grijs, NIET een verticale balk
+    // links. Die verticale balk stond hier eerder (mijn eigen invulling,
+    // niet uit de mockup) en was precies de "witte balk" die op de echte
+    // hardware zichtbaar bleek — vervangen door dit, conform de mockup.
     Rectangle {
-        id: rail
-        anchors.left: parent.left
+        id: headerRail
         anchors.top: header.bottom
-        anchors.bottom: footer.top
-        width: 20 * root.uiScale
-        color: colIce
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 3 * root.uiScale
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0;  color: colGold }
+            GradientStop { position: 0.55; color: colIce }
+            GradientStop { position: 1.0;  color: colBorder }
+        }
     }
 
     // --- Footer: paginadots (nu nog maar 1 pagina: Overview) -------------
@@ -153,8 +163,8 @@ Window {
     // --- Inhoud: Overview-pagina ------------------------------------------
     OverviewPage {
         id: overviewPage
-        anchors.top: header.bottom
-        anchors.left: rail.right
+        anchors.top: headerRail.bottom
+        anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: footer.top
 
