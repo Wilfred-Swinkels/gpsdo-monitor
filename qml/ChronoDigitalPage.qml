@@ -83,7 +83,7 @@ Item {
                     width: parent.width
                     height: (groupsColumn.height - groupsColumn.spacing) / 2
                     radius: 18 * page.uiScale
-                    color: page.colSurface
+                    color: "transparent"
                     border.width: 1
                     border.color: page.colBorder
 
@@ -154,7 +154,7 @@ Item {
                     width: parent.width
                     height: (groupsColumn.height - groupsColumn.spacing) / 2
                     radius: 18 * page.uiScale
-                    color: page.colSurface
+                    color: "transparent"
                     border.width: 1
                     border.color: page.colBorder
 
