@@ -101,7 +101,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Δf/f"
                 color: page.colInkDim
-                font.pixelSize: 15 * page.uiScale
+                font.pixelSize: 17 * page.uiScale
             }
             Text {
                 anchors.right: parent.right
@@ -144,7 +144,7 @@ Item {
                 elide: Text.ElideRight
                 text: "Lampspanning — veroudering"
                 color: page.colInkDim
-                font.pixelSize: 14 * page.uiScale
+                font.pixelSize: 16 * page.uiScale
             }
             Text {
                 anchors.right: parent.right

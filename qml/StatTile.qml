@@ -41,7 +41,7 @@ Rectangle {
         anchors.margins: 8 * tile.uiScale
         text: tile.label
         color: tile.colInkDim
-        font.pixelSize: 11 * tile.uiScale
+        font.pixelSize: 13 * tile.uiScale
         font.letterSpacing: 1
         elide: Text.ElideRight
     }
