@@ -39,13 +39,18 @@ Item {
         onTriggered: page.now = new Date()
     }
 
+    // Let op: gebruikt bewust een verse new Date() i.p.v. het eens-per-
+    // seconde bijgewerkte page.now — de secondewijzer heeft milliseconde-
+    // precisie nodig om vloeiend te kunnen glijden i.p.v. elke seconde te
+    // springen (zie de Canvas-Timer verderop, die nu veel vaker herschildert).
     function displayDate() {
+        var raw = new Date()
         if (page.tzMode === "CEST") {
-            var d = new Date(page.now.getTime())
+            var d = new Date(raw.getTime())
             d.setHours(d.getHours() + 2)
             return d
         }
-        return page.now
+        return raw
     }
 
     function stardateFor(d) {
@@ -64,6 +69,12 @@ Item {
     property bool hasPos: gpsdoModel.hasGpsPosition
     property real obsLat: gpsdoModel.gpsLatitude
     property real obsLon: gpsdoModel.gpsLongitude
+
+    // Vooraf berekende sterposities (alleen bijgewerkt op skyNow/hasPos/
+    // obsLat/obsLon-verandering, dus hooguit 1x/30s) — de klok herschildert
+    // zelf nu veel vaker (voor de vloeiende secondewijzer, zie onder), en we
+    // willen niet 20-25x/sec opnieuw voor alle sterren zitten sinussen.
+    property var skyPositions: ({})
 
     // Zelfde catalogus + lijnstukken als SkyplotPage.qml — zie daar voor
     // de bronvermelding van de J2000 RA/Dec/magnitude-waarden.
@@ -165,6 +176,20 @@ Item {
         if (Math.sin(haRad) > 0) az = 2 * Math.PI - az
         return { alt: alt * 180 / Math.PI, az: az * 180 / Math.PI }
     }
+
+    function recomputeSkyPositions() {
+        if (!page.hasPos) { page.skyPositions = {}; return }
+        var jd = page.julianDate(page.skyNow)
+        var pos = {}
+        for (var name in page.starCatalog) {
+            var st = page.starCatalog[name]
+            var aa = page.altAzFor(st[0], st[1], jd)
+            if (aa.alt > 0) pos[name] = aa
+        }
+        page.skyPositions = pos
+    }
+
+    Component.onCompleted: page.recomputeSkyPositions()
 
     // Achtergrond bewust transparant — de gedeelde sterrenveld/hoek-gloed-
     // achtergrond zit al achter de swipebare pagina's in main.qml.
@@ -280,13 +305,10 @@ Item {
                         return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)]
                     }
                     if (page.hasPos) {
-                        var jd = page.julianDate(page.skyNow)
-                        var pos = {}
-                        for (var name in page.starCatalog) {
-                            var st = page.starCatalog[name]
-                            var aa = page.altAzFor(st[0], st[1], jd)
-                            if (aa.alt > 0) pos[name] = aa
-                        }
+                        // Vooraf gecachte posities (page.recomputeSkyPositions,
+                        // hooguit 1x/30s) — niet hier opnieuw berekenen, dit
+                        // onPaint-blok draait nu veel vaker (secondewijzer).
+                        var pos = page.skyPositions
 
                         ctx.strokeStyle = "rgba(210,220,255,0.55)"
                         ctx.lineWidth = 1.3 * page.uiScale
@@ -341,7 +363,10 @@ Item {
                     var d = page.displayDate()
                     var h = d.getHours() % 12
                     var m = d.getMinutes()
-                    var s = d.getSeconds()
+                    // Milliseconden meenemen i.p.v. alleen hele seconden —
+                    // dat is wat de secondewijzer (en zijdelings ook de
+                    // minutenwijzer) vloeiend laat glijden i.p.v. springen.
+                    var s = d.getSeconds() + d.getMilliseconds() / 1000
                     var hAngle = ((h + m / 60) / 12) * 2 * Math.PI
                     var mAngle = ((m + s / 60) / 60) * 2 * Math.PI
                     var sAngle = (s / 60) * 2 * Math.PI
@@ -356,8 +381,12 @@ Item {
                     ctx.fill()
                 }
 
+                // 40ms == 25fps: vloeiend genoeg voor een glijdende
+                // secondewijzer, nog ruim binnen wat een Pi 3B+ aankan voor
+                // dit simpele Canvas-tekenwerk (de zware sterren-trig zit
+                // niet meer in dit pad, zie skyPositions-cache hierboven).
                 Timer {
-                    interval: 1000
+                    interval: 40
                     running: true
                     repeat: true
                     onTriggered: clock.requestPaint()
@@ -366,10 +395,10 @@ Item {
                 onHeightChanged: requestPaint()
                 Connections {
                     target: page
-                    function onSkyNowChanged() { clock.requestPaint() }
-                    function onHasPosChanged() { clock.requestPaint() }
-                    function onObsLatChanged() { clock.requestPaint() }
-                    function onObsLonChanged() { clock.requestPaint() }
+                    function onSkyNowChanged() { page.recomputeSkyPositions() }
+                    function onHasPosChanged() { page.recomputeSkyPositions() }
+                    function onObsLatChanged() { page.recomputeSkyPositions() }
+                    function onObsLonChanged() { page.recomputeSkyPositions() }
                 }
             }
 
