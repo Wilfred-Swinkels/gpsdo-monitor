@@ -15,6 +15,7 @@ constexpr quint8 kClassNav = 0x01;
 constexpr quint8 kIdNavSol = 0x06;
 constexpr quint8 kIdNavDop = 0x04;
 constexpr quint8 kIdNavSvinfo = 0x30;
+constexpr quint8 kIdNavPosllh = 0x02;
 constexpr quint8 kClassCfg = 0x06;
 constexpr quint8 kIdCfgMsg = 0x01;
 } // namespace
@@ -56,6 +57,7 @@ void GpsLink::enablePeriodicMessages() {
         {kClassNav, kIdNavSvinfo},
         {kClassNav, kIdNavSol},
         {kClassNav, kIdNavDop},
+        {kClassNav, kIdNavPosllh},
     };
     for (const auto &msg : toEnable) {
         QByteArray payload;
@@ -160,6 +162,8 @@ void GpsLink::dispatch(quint8 msgClass, quint8 msgId, const QByteArray &payload)
         handleNavSol(payload);
     } else if (msgClass == kClassNav && msgId == kIdNavDop) {
         handleNavDop(payload);
+    } else if (msgClass == kClassNav && msgId == kIdNavPosllh) {
+        handleNavPosllh(payload);
     }
     // Andere klasse/id-combinaties (bv. ACK-ACK op onze CFG-MSG-commando's)
     // worden bewust genegeerd — dit is geen generieke UBX-bibliotheek, alleen
@@ -217,6 +221,24 @@ void GpsLink::handleNavDop(const QByteArray &payload) {
     GpsFix fix = m_lastFix; // fixType/numSatellites/pdop komen uit NAV-SOL
     fix.hdop = qFromLittleEndian<quint16>(
                    reinterpret_cast<const uchar *>(payload.constData() + 12)) / 100.0;
+    fix.valid = true;
+
+    m_lastFix = fix;
+    emit fixUpdated(m_lastFix);
+}
+
+void GpsLink::handleNavPosllh(const QByteArray &payload) {
+    if (payload.size() < 28)
+        return;
+
+    GpsFix fix = m_lastFix; // fixType/hdop/etc. komen uit NAV-SOL/NAV-DOP
+    const qint32 lon = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 4));
+    const qint32 lat = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 8));
+    fix.longitudeDeg = lon / 1.0e7;
+    fix.latitudeDeg = lat / 1.0e7;
+    fix.hasPosition = true;
     fix.valid = true;
 
     m_lastFix = fix;

@@ -57,6 +57,11 @@ class GpsdoModel : public QObject {
     // {svid,elevationDeg,azimuthDeg,cno,usedInFix,unhealthy} — voor de
     // skyplot (pagina 2) en het balkjesdiagram op de GPS-fix-pagina (4).
     Q_PROPERTY(QVariantList satellites READ satellites NOTIFY gpsChanged)
+    // Waarnemerspositie (NAV-POSLLH), voor de sterrenbeelden-overlay op de
+    // skyplot-pagina — RA/Dec -> Alt/Az vereist de echte breedte-/lengtegraad.
+    Q_PROPERTY(bool hasGpsPosition READ hasGpsPosition NOTIFY gpsChanged)
+    Q_PROPERTY(double gpsLatitude READ gpsLatitude NOTIFY gpsChanged)
+    Q_PROPERTY(double gpsLongitude READ gpsLongitude NOTIFY gpsChanged)
 
     // --- MCP3426 / lamp-/xtal-spanning — NOG NIET BEKABELD -----------------
     Q_PROPERTY(QString lampVoltageText READ lampVoltageText NOTIFY adcChanged)
@@ -98,6 +103,9 @@ public:
     QString fixTypeText() const;
     QString hdopText() const;
     QVariantList satellites() const;
+    bool hasGpsPosition() const { return m_gpsFix.hasPosition; }
+    double gpsLatitude() const { return m_gpsFix.latitudeDeg; }
+    double gpsLongitude() const { return m_gpsFix.longitudeDeg; }
 
     QString lampVoltageText() const { return QStringLiteral("—"); }
     QString xtalVoltageText() const { return QStringLiteral("—"); }

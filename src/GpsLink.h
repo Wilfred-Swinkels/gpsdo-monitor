@@ -48,6 +48,14 @@
 //  NAV-DOP (0x01 0x04) payload (18 bytes): iTOW(u4) gDOP(u2) pDOP(u2)
 //    tDOP(u2) vDOP(u2) hDOP(u2) nDOP(u2) eDOP(u2) — alle DOP-waarden ×0.01.
 //
+//  NAV-POSLLH (0x01 0x02) payload (28 bytes): iTOW(u4) lon(i4) lat(i4)
+//    height(i4) hMSL(i4) hAcc(u4) vAcc(u4). lon/lat zijn ×1e-7 graden
+//    (WGS84), height/hMSL in mm — hier alleen lon/lat gebruikt. Toegevoegd
+//    voor de sterrenbeelden-overlay op de skyplot-pagina: RA/Dec naar
+//    Alt/Az omrekenen vereist de waarnemerspositie, en dit is de simpelste
+//    UBX-boodschap die dat rechtstreeks geeft (i.p.v. zelf ECEF->geodetisch
+//    om te rekenen uit NAV-SOL's ecefX/Y/Z).
+//
 // Wat deze driver NIET doet, bewust:
 //  - Geen UBX-CFG-PRT (baudrate/protocol van de UART zelf herconfigureren):
 //    de module accepteert UBX-invoer sowieso ongeacht de output-instelling,
@@ -86,6 +94,15 @@ struct GpsFix {
     double hdop = 0.0;          // uit NAV-DOP
     double pdop = 0.0;          // uit NAV-SOL
     bool   valid = false;       // minstens 1x een geldig bericht ontvangen
+
+    // Positie uit NAV-POSLLH — nodig voor de sterrenbeelden-overlay op de
+    // skyplot-pagina (RA/Dec -> Alt/Az vereist de waarnemerspositie).
+    // Losse velden i.p.v. hergebruik van de ECEF-XYZ in NAV-SOL: NAV-POSLLH
+    // geeft lengte-/breedtegraad direct, geen eigen ECEF->geodetisch-
+    // conversie nodig.
+    double latitudeDeg = 0.0;
+    double longitudeDeg = 0.0;
+    bool   hasPosition = false;
 };
 
 class GpsLink : public QObject {
@@ -115,10 +132,11 @@ private:
     void handleNavSvinfo(const QByteArray &payload);
     void handleNavSol(const QByteArray &payload);
     void handleNavDop(const QByteArray &payload);
+    void handleNavPosllh(const QByteArray &payload);
 
     QSerialPort m_port;
     QByteArray  m_rxBuffer;
-    GpsFix      m_lastFix; // NAV-SOL en NAV-DOP vullen elk een deel; hier samengevoegd
+    GpsFix      m_lastFix; // NAV-SOL, NAV-DOP en NAV-POSLLH vullen elk een deel; hier samengevoegd
 
     // Bovengrens voor een geloofwaardige payload-lengte — puur defensief,
     // zodat een toevallig foutief gedetecteerde sync niet leidt tot
