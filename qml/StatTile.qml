@@ -47,16 +47,21 @@ Rectangle {
     }
 
     Text {
+        // Vult de hele ruimte ónder het label (niet alleen de eigen
+        // tekst-hoogte) en centreert de waarde daarbinnen, zowel
+        // horizontaal als verticaal — vandaar zowel top ALS bottom
+        // verankerd. De keten (top: labelText.bottom) blijft staan, dus dit
+        // kan nog steeds nooit over het label heen lopen.
         anchors.top: labelText.bottom
-        anchors.topMargin: 2 * tile.uiScale
+        anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: 8 * tile.uiScale
-        anchors.rightMargin: 8 * tile.uiScale
+        anchors.margins: 6 * tile.uiScale
         horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
         text: tile.value.toString()
         color: tile.colInk
-        font.pixelSize: 26 * tile.uiScale
+        font.pixelSize: 30 * tile.uiScale
         font.bold: true
         elide: Text.ElideRight
     }
