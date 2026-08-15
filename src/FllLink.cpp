@@ -110,14 +110,22 @@ void FllLink::onReadyRead() {
 }
 
 void FllLink::handleLine(const QByteArray &line) {
+    emit rawLineReceived(line);
+
     FllStatus status;
+    QString parseErrorReason;
     // Alleen de 10-velden FLL-statusstring wordt hier verwerkt (sectie 5.1).
-    // De parameterstring (sectie 5.2, andere vorm) en menu-/versietekst worden
-    // door parseStatus() vanzelf afgewezen (verkeerd aantal velden) — een
-    // volledige implementatie zou die apart parsen om S/M-bevestigingen te
-    // controleren, maar dat is niet nodig voor de lock-versnellingslogica zelf.
-    if (!parseStatus(line, status))
+    // De parameterstring (sectie 5.2, andere vorm) en menu-/versietekst
+    // worden door parseStatus() vanzelf afgewezen (verkeerd aantal velden) —
+    // een volledige implementatie zou die apart parsen om S/M-bevestigingen
+    // te controleren, maar dat is niet nodig voor de lock-versnellingslogica
+    // zelf. We laten dit WEL via parseError() weten i.p.v. stilletjes te
+    // negeren, zodat "er komt niets binnen" en "er komt iets binnen maar het
+    // parseert niet" van elkaar te onderscheiden zijn.
+    if (!parseStatus(line, status, parseErrorReason)) {
+        emit parseError(line, parseErrorReason);
         return;
+    }
 
     emit statusUpdated(status);
 
@@ -137,44 +145,46 @@ void FllLink::handleLine(const QByteArray &line) {
     }
 }
 
-bool FllLink::parseStatus(const QByteArray &line, FllStatus &out) {
+bool FllLink::parseStatus(const QByteArray &line, FllStatus &out, QString &errorOut) {
     // Voorbeeld: L | U | 01FF6 | + | F | 67FC | 0120 | FFFD | 007D | 03
     const QList<QByteArray> f = line.split('|');
-    if (f.size() != 10)
+    if (f.size() != 10) {
+        errorOut = QStringLiteral("verwacht 10 met '|' gescheiden velden, kreeg er %1").arg(f.size());
         return false;
+    }
 
     auto trimmed = [](const QByteArray &b) { return b.trimmed(); };
     bool ok = true;
 
     const QByteArray stateF = trimmed(f[0]);
-    if (stateF.size() != 1) return false;
+    if (stateF.size() != 1) { errorOut = QStringLiteral("veld 1 (state) is geen 1 teken"); return false; }
     out.state = QChar::fromLatin1(stateF.at(0));
 
     const QByteArray alarmF = trimmed(f[1]);
-    if (alarmF.size() != 1) return false;
+    if (alarmF.size() != 1) { errorOut = QStringLiteral("veld 2 (alarm) is geen 1 teken"); return false; }
     out.alarmLatch = QChar::fromLatin1(alarmF.at(0));
 
     out.dacValue = trimmed(f[2]).toUShort(&ok, 16);
-    if (!ok) return false;
+    if (!ok) { errorOut = QStringLiteral("veld 3 (dac) is geen geldige hex-waarde"); return false; }
 
     const QByteArray signF = trimmed(f[3]);
-    if (signF.size() != 1) return false;
+    if (signF.size() != 1) { errorOut = QStringLiteral("veld 4 (freq.sign) is geen 1 teken"); return false; }
     out.freqAdjSign = QChar::fromLatin1(signF.at(0));
 
     const QByteArray sizeF = trimmed(f[4]);
-    if (sizeF.size() != 1) return false;
+    if (sizeF.size() != 1) { errorOut = QStringLiteral("veld 5 (freq.size) is geen 1 teken"); return false; }
     out.freqAdjSize = QChar::fromLatin1(sizeF.at(0));
 
     out.freqReadout = trimmed(f[5]).toUShort(&ok, 16);
-    if (!ok) return false;
+    if (!ok) { errorOut = QStringLiteral("veld 6 (freq-uitlezing) is geen geldige hex-waarde"); return false; }
     out.sampleCounter = trimmed(f[6]).toUShort(&ok, 16);
-    if (!ok) return false;
+    if (!ok) { errorOut = QStringLiteral("veld 7 (sample-teller) is geen geldige hex-waarde"); return false; }
     out.accumFreqDiff = static_cast<qint16>(trimmed(f[7]).toUShort(&ok, 16));
-    if (!ok) return false;
+    if (!ok) { errorOut = QStringLiteral("veld 8 (accum.diff) is geen geldige hex-waarde"); return false; }
     out.timestamp = trimmed(f[8]).toUShort(&ok, 16);
-    if (!ok) return false;
+    if (!ok) { errorOut = QStringLiteral("veld 9 (timestamp) is geen geldige hex-waarde"); return false; }
     out.holdoverCounter = trimmed(f[9]).toUShort(&ok, 16);
-    if (!ok) return false;
+    if (!ok) { errorOut = QStringLiteral("veld 10 (holdover) is geen geldige hex-waarde"); return false; }
 
     out.valid = true;
     return true;

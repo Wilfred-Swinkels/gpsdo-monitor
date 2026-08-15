@@ -58,6 +58,18 @@ signals:
     void lockAcquired();   // vuurt precies één keer: de EERSTE bevestigde lock
     void lockLost();       // vuurt als een eerder bevestigde lock wegvalt
 
+    // Diagnostisch: vuurt voor ELKE volledige regel die binnenkomt, nog vóór
+    // het parsen — dus ook voor menu-/versietekst en de parameterstring
+    // (sectie 5.2). Toegevoegd na een debug-sessie waarin er geen zichtbaar
+    // onderscheid was tussen "er komt niets binnen" (bekabeling/baudrate) en
+    // "er komt iets binnen maar het parseert niet" (verkeerd formaat) — met
+    // dit signaal is dat in de CLI/logs meteen te zien.
+    void rawLineReceived(const QByteArray &line);
+
+    // Vuurt wanneer een regel NIET als de 10-velden-statusstring te parsen
+    // is (verkeerd aantal velden, of een veld dat geen geldige hex-waarde is).
+    void parseError(const QByteArray &line, const QString &reason);
+
 private slots:
     void onReadyRead();
 
@@ -66,7 +78,7 @@ private:
     void beginAcquisitionPhase();
     void switchToSteadyStatePhase();
     void handleLine(const QByteArray &line);
-    static bool parseStatus(const QByteArray &line, FllStatus &out);
+    static bool parseStatus(const QByteArray &line, FllStatus &out, QString &errorOut);
 
     QSerialPort m_port;
     QByteArray  m_rxBuffer;

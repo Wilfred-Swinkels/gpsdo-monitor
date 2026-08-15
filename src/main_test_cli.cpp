@@ -55,6 +55,12 @@ int main(int argc, char *argv[]) {
         });
         QObject::connect(&fllLink, &FllLink::lockAcquired, []() { qInfo() << "*** LOCK ACQUIRED ***"; });
         QObject::connect(&fllLink, &FllLink::lockLost, []() { qInfo() << "*** LOCK LOST ***"; });
+        QObject::connect(&fllLink, &FllLink::rawLineReceived, [](const QByteArray &line) {
+            qInfo().noquote() << "FLL raw:" << line;
+        });
+        QObject::connect(&fllLink, &FllLink::parseError, [](const QByteArray &line, const QString &reason) {
+            qWarning().noquote() << QStringLiteral("FLL parse-fout (%1): %2").arg(reason, QString::fromLatin1(line));
+        });
 
         if (!fllLink.open(parser.value(fllOpt))) {
             QTextStream(stderr) << "Kon FLL-seriele poort niet openen.\n";
