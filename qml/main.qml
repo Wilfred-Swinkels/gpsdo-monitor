@@ -63,14 +63,21 @@ Window {
         }
     }
 
-    // --- Live klok -----------------------------------------------------
-    property string clockText: Qt.formatTime(new Date(), "hh:mm:ss")
+    // --- Live klok (header) — UTC, met datum eronder, zoals de mockup's
+    // #clockTime/#clockDate (die gebruiken expliciet getUTCHours() e.d.,
+    // niet de lokale systeemtijd van de Pi).
+    function pad2(n) { return (n < 10 ? "0" : "") + n }
+    property date headerNow: new Date()
     Timer {
         interval: 1000
         running: true
         repeat: true
-        onTriggered: root.clockText = Qt.formatTime(new Date(), "hh:mm:ss")
+        onTriggered: root.headerNow = new Date()
     }
+    readonly property string clockTimeText:
+        root.pad2(root.headerNow.getUTCHours()) + ":" + root.pad2(root.headerNow.getUTCMinutes()) + ":" + root.pad2(root.headerNow.getUTCSeconds())
+    readonly property string clockDateText:
+        root.headerNow.getUTCFullYear() + "-" + root.pad2(root.headerNow.getUTCMonth() + 1) + "-" + root.pad2(root.headerNow.getUTCDate()) + " UTC"
 
     // --- Achtergrond: hoek-gloed + fijn technisch grid + sterrenveld -------
     // Zelfde "dual-direction gradient"-truc als de HTML-mockup: rust-gloed
@@ -87,51 +94,115 @@ Window {
         starCount: 30
     }
 
-    // --- Header ----------------------------------------------------------
+    // --- Header ------------------------------------------------------------
+    // Herbouwd naar de ECHTE mockup-opzet (".hdr"/".hdr-elbow"/".hdr-title"/
+    // ".hdr-clock") — dit was eerder abusievelijk een vólle gouden balk met
+    // donkere tekst; de mockup is juist een DONKERE balk (surface-kleur) met
+    // een klein donker "elleboog"-blokje met een gouden accent, en een
+    // tweekleurige titel (GPSDO in goud, MONITOR in ijsblauw).
+    //
+    // Kanttekening: CSS's "border-radius:32px 0 0 0" rondt alleen de
+    // linkerbovenhoek af; QML's Rectangle.radius kent geen per-hoek-
+    // varianten zonder een nieuwere Qt6-minorversie-API te gebruiken (bewust
+    // vermeden, zie projectbrief) — hier daarom een bescheiden radius op
+    // alle 4 hoeken van het elleboog-blokje i.p.v. exact 1 hoek. Verder:
+    // de mockup's "SIM data"-knipperlampje is een demo-only indicator (er
+    // wordt daar nep-data gesimuleerd) en dus bewust weggelaten — deze app
+    // praat met echte hardware.
     Rectangle {
         id: header
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 64 * root.uiScale
-        color: colGold
+        height: 58 * root.uiScale
+        color: colSurface
         z: 1
 
+        // --- elleboog: klein donker blokje met een goud->ijs accentbalkje ---
         Rectangle {
-            // LCARS-elleboog: afgeronde linkerhoek van de header
+            id: hdrElbow
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: 64 * root.uiScale
-            radius: 32 * root.uiScale
-            color: colGold
+            width: 52 * root.uiScale
+            radius: 16 * root.uiScale
+            color: colTile
+            border.width: 2 * root.uiScale
+            border.color: colBorder
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.topMargin: 8 * root.uiScale
+                anchors.bottomMargin: 8 * root.uiScale
+                width: 3 * root.uiScale
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: colGold }
+                    GradientStop { position: 1.0; color: colIce }
+                }
+            }
         }
 
-        Text {
-            id: titleText
-            anchors.left: parent.left
-            anchors.leftMargin: 72 * root.uiScale
-            anchors.right: clockLabel.left
+        // --- titel: "GPSDO" (goud) + "MONITOR" (ijsblauw) --------------------
+        Row {
+            id: titleRow
+            anchors.left: hdrElbow.right
+            anchors.leftMargin: 20 * root.uiScale
+            anchors.right: hdrClock.left
             anchors.rightMargin: 12 * root.uiScale
             anchors.verticalCenter: parent.verticalCenter
-            elide: Text.ElideRight
-            text: "GPSDO MONITOR"
-            color: colBg
-            font.pixelSize: 22 * root.uiScale
-            font.bold: true
-            font.letterSpacing: 1 * root.uiScale
+            clip: true
+
+            Text {
+                text: "GPSDO"
+                color: colGold
+                font.pixelSize: 22 * root.uiScale
+                font.bold: true
+                font.letterSpacing: 1 * root.uiScale
+            }
+            Text {
+                text: "MONITOR"
+                color: colIce
+                font.pixelSize: 22 * root.uiScale
+                font.bold: true
+                font.letterSpacing: 1 * root.uiScale
+            }
         }
 
-        Text {
-            id: clockLabel
+        // --- klok: UTC-tijd + datum, rechts, eigen donker vlak ---------------
+        Rectangle {
+            id: hdrClock
             anchors.right: parent.right
-            anchors.rightMargin: 20 * root.uiScale
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.clockText
-            color: colBg
-            font.family: "monospace"
-            font.pixelSize: 20 * root.uiScale
-            font.bold: true
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 150 * root.uiScale
+            color: colTile
+            border.width: 2 * root.uiScale
+            border.color: colBorder
+
+            Column {
+                anchors.right: parent.right
+                anchors.rightMargin: 14 * root.uiScale
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 1 * root.uiScale
+
+                Text {
+                    anchors.right: parent.right
+                    text: root.clockTimeText
+                    color: colIce
+                    font.family: "monospace"
+                    font.bold: true
+                    font.pixelSize: 18 * root.uiScale
+                }
+                Text {
+                    anchors.right: parent.right
+                    text: root.clockDateText
+                    color: colInkDim
+                    font.family: "monospace"
+                    font.pixelSize: 9 * root.uiScale
+                }
+            }
         }
     }
 
