@@ -35,6 +35,8 @@ add_executable(gpsdo_app
     app/main.cpp
     app/GpsdoModel.h
     app/GpsdoModel.cpp
+    app/TimeModeSupervisor.h
+    app/TimeModeSupervisor.cpp
 )
 target_link_libraries(gpsdo_app PRIVATE gpsdo_core Qt6::Quick)
 target_include_directories(gpsdo_app PRIVATE app)

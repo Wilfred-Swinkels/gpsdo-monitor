@@ -18,6 +18,23 @@ constexpr quint8 kIdNavSvinfo = 0x30;
 constexpr quint8 kIdNavPosllh = 0x02;
 constexpr quint8 kClassCfg = 0x06;
 constexpr quint8 kIdCfgMsg = 0x01;
+constexpr quint8 kIdCfgTmode = 0x1D;
+constexpr quint8 kClassTim = 0x0D;
+constexpr quint8 kIdTimSvin = 0x04;
+
+// Kleine helpers om little-endian 32-bit velden in een CFG-payload op te
+// bouwen — de rest van dit bestand doet alleen het omgekeerde (uitlezen via
+// qFromLittleEndian), dit is de eerste plek die zelf een multi-byte veld
+// moet SCHRIJVEN (CFG-MSG hierboven is toevallig altijd 1-byte velden).
+void appendU4(QByteArray &buf, quint32 v) {
+    buf.append(static_cast<char>(v & 0xFF));
+    buf.append(static_cast<char>((v >> 8) & 0xFF));
+    buf.append(static_cast<char>((v >> 16) & 0xFF));
+    buf.append(static_cast<char>((v >> 24) & 0xFF));
+}
+void appendI4(QByteArray &buf, qint32 v) {
+    appendU4(buf, static_cast<quint32>(v));
+}
 } // namespace
 
 GpsLink::GpsLink(QObject *parent) : QObject(parent) {
@@ -47,6 +64,67 @@ void GpsLink::close() {
     m_port.close();
 }
 
+bool GpsLink::startSurveyIn(quint32 minDurationSeconds, quint32 varLimitMm2) {
+    if (!m_port.isOpen())
+        return false;
+    // CFG-TMODE payload (28 bytes) — zie GpsLink.h voor de bronvermelding.
+    // fixedPosX/Y/Z/fixedPosVar zijn ongebruikt in Survey-In-mode (die zijn
+    // alleen relevant bij timeMode=2/Fixed), dus gewoon op 0.
+    QByteArray payload;
+    appendU4(payload, 1); // timeMode = 1 (Survey In)
+    appendI4(payload, 0); // fixedPosX
+    appendI4(payload, 0); // fixedPosY
+    appendI4(payload, 0); // fixedPosZ
+    appendU4(payload, 0); // fixedPosVar
+    appendU4(payload, minDurationSeconds);
+    appendU4(payload, varLimitMm2);
+    m_port.write(buildFrame(kClassCfg, kIdCfgTmode, payload));
+    return true;
+}
+
+bool GpsLink::disableTimeMode() {
+    if (!m_port.isOpen())
+        return false;
+    QByteArray payload;
+    appendU4(payload, 0); // timeMode = 0 (Disabled)
+    appendI4(payload, 0);
+    appendI4(payload, 0);
+    appendI4(payload, 0);
+    appendU4(payload, 0);
+    appendU4(payload, 0);
+    appendU4(payload, 0);
+    m_port.write(buildFrame(kClassCfg, kIdCfgTmode, payload));
+    return true;
+}
+
+bool GpsLink::setFixedPosition(qint32 ecefXcm, qint32 ecefYcm, qint32 ecefZcm, quint32 posVarMm2) {
+    if (!m_port.isOpen())
+        return false;
+    QByteArray payload;
+    appendU4(payload, 2); // timeMode = 2 (Fixed)
+    appendI4(payload, ecefXcm);
+    appendI4(payload, ecefYcm);
+    appendI4(payload, ecefZcm);
+    appendU4(payload, posVarMm2);
+    appendU4(payload, 0); // svinMinDur — ongebruikt in Fixed Mode
+    appendU4(payload, 0); // svinVarLimit — ongebruikt in Fixed Mode
+    m_port.write(buildFrame(kClassCfg, kIdCfgTmode, payload));
+    return true;
+}
+
+bool GpsLink::requestAutoSurveyIn(quint32 minDurationSeconds, quint32 varLimitMm2) {
+    if (!m_port.isOpen())
+        return false;
+    m_autoSurveyInPending = true;
+    m_autoSurveyMinDurationSeconds = minDurationSeconds;
+    m_autoSurveyVarLimitMm2 = varLimitMm2;
+    // CFG-TMODE Poll Request: lege payload -- de module antwoordt zelf met
+    // een CFG-TMODE-bericht (28 bytes) met de HUIDIGE instelling. Zie
+    // handleCfgTmodeResponse() voor wat daarmee gebeurt.
+    m_port.write(buildFrame(kClassCfg, kIdCfgTmode, QByteArray()));
+    return true;
+}
+
 void GpsLink::enablePeriodicMessages() {
     // CFG-MSG met een 3-byte payload (class, id, rate) zet de output-rate
     // van dat bericht op de poort waarop het commando binnenkomt — hier dus
@@ -58,6 +136,7 @@ void GpsLink::enablePeriodicMessages() {
         {kClassNav, kIdNavSol},
         {kClassNav, kIdNavDop},
         {kClassNav, kIdNavPosllh},
+        {kClassTim, kIdTimSvin},
     };
     for (const auto &msg : toEnable) {
         QByteArray payload;
@@ -164,6 +243,12 @@ void GpsLink::dispatch(quint8 msgClass, quint8 msgId, const QByteArray &payload)
         handleNavDop(payload);
     } else if (msgClass == kClassNav && msgId == kIdNavPosllh) {
         handleNavPosllh(payload);
+    } else if (msgClass == kClassTim && msgId == kIdTimSvin) {
+        handleTimSvin(payload);
+    } else if (msgClass == kClassCfg && msgId == kIdCfgTmode) {
+        // Komt hier alleen binnen als antwoord op onze eigen poll request
+        // uit requestAutoSurveyIn() -- de module stuurt dit niet ongevraagd.
+        handleCfgTmodeResponse(payload);
     }
     // Andere klasse/id-combinaties (bv. ACK-ACK op onze CFG-MSG-commando's)
     // worden bewust genegeerd — dit is geen generieke UBX-bibliotheek, alleen
@@ -205,6 +290,13 @@ void GpsLink::handleNavSol(const QByteArray &payload) {
     fix.fixType = static_cast<quint8>(payload[10]);
     const quint8 flags = static_cast<quint8>(payload[11]);
     fix.fixOk = (flags & 0x01) != 0;
+    fix.ecefXcm = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 12));
+    fix.ecefYcm = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 16));
+    fix.ecefZcm = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 20));
+    fix.hasEcef = true;
     fix.pdop = qFromLittleEndian<quint16>(
                    reinterpret_cast<const uchar *>(payload.constData() + 44)) / 100.0;
     fix.numSatellites = static_cast<quint8>(payload[47]);
@@ -243,4 +335,50 @@ void GpsLink::handleNavPosllh(const QByteArray &payload) {
 
     m_lastFix = fix;
     emit fixUpdated(m_lastFix);
+}
+
+void GpsLink::handleTimSvin(const QByteArray &payload) {
+    if (payload.size() < 28)
+        return;
+
+    SurveyInStatus s;
+    s.durationSec = qFromLittleEndian<quint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 0));
+    s.meanXcm = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 4));
+    s.meanYcm = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 8));
+    s.meanZcm = qFromLittleEndian<qint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 12));
+    s.meanVarMm2 = qFromLittleEndian<quint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 16));
+    s.observations = qFromLittleEndian<quint32>(
+        reinterpret_cast<const uchar *>(payload.constData() + 20));
+    s.valid = static_cast<quint8>(payload[24]) != 0;
+    s.active = static_cast<quint8>(payload[25]) != 0;
+
+    emit surveyInUpdated(s);
+}
+
+void GpsLink::handleCfgTmodeResponse(const QByteArray &payload) {
+    if (payload.size() < 4)
+        return; // te kort om zelfs maar timeMode uit te lezen -- negeren
+
+    const quint32 timeMode = qFromLittleEndian<quint32>(
+        reinterpret_cast<const uchar *>(payload.constData()));
+    emit timeModeReported(static_cast<quint8>(timeMode));
+
+    if (!m_autoSurveyInPending)
+        return;
+    m_autoSurveyInPending = false; // eenmalig -- zie header-toelichting
+
+    if (timeMode == 0) {
+        // Nog Disabled: dit is de eerste keer voor deze module (of de
+        // module is stroomloos geweest sinds de vorige keer) -- nu pas
+        // echt Survey-In starten.
+        startSurveyIn(m_autoSurveyMinDurationSeconds, m_autoSurveyVarLimitMm2);
+    }
+    // timeMode == 1 (Survey-In loopt al) of == 2 (al Fixed): bewust NIETS
+    // doen -- dat bestaande resultaat blijft met rust. Zie GpsLink.h voor
+    // waarom dit geen "is de antenne verplaatst?"-detectie doet.
 }

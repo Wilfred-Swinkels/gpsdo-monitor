@@ -64,13 +64,36 @@
 //    zijn RAM-only en worden bij elke open() opnieuw gestuurd — bewust
 //    dezelfde aanpak als bij FllLink, geen permanente module-instellingen
 //    vanuit deze klasse.
-//  - Geen Time Mode / Survey-In / Fixed Mode configuratie (CFG-TMODE): dat
-//    hoort pas bij een vaste opstelplek van de Pi, zie projectbrief
-//    "Volgende stap" — expliciet een latere, aparte actie.
 //  - NMEA-uitvoer wordt niet uitgezet: de parser scant de buffer op de
 //    0xB5 0x62-syncbytes en negeert al het overige, en NMEA is 7-bit ASCII
 //    (0x00-0x7F) dus 0xB5 kan daar sowieso nooit per ongeluk in voorkomen —
 //    er is dus geen interferentie tussen NMEA- en UBX-uitvoer op dezelfde poort.
+//
+// Time Mode / Survey-In / Fixed Mode (CFG-TMODE, 0x06 0x1D) — WEL
+// geïmplementeerd (startSurveyIn()/disableTimeMode()), maar bewust NIET
+// automatisch bij elke open() gestuurd zoals de periodieke NAV-berichten
+// hierboven: dat zou een lopende, meerdere-uren-tot-dagen-durende Survey-In
+// bij elke app-herstart resetten. Moet dus expliciet getriggerd worden (zie
+// main.cpp, --start-survey-in) en is pas zinvol als de antenne al op haar
+// definitieve, permanente plek staat — zie projectbrief "Volgende stap".
+//
+//  UBX-CFG-TMODE (0x06 0x1D) payload (28 bytes), bron: officiële u-blox 5
+//  Protocol Specification (GPS.G5-X-07036-D), sectie "CFG-TMODE (0x06
+//  0x1D)": timeMode(u4, 0=disabled/1=survey-in/2=fixed) fixedPosX/Y/Z(i4×3,
+//  ECEF, cm — alleen relevant in Fixed Mode) fixedPosVar(u4, mm², alleen
+//  Fixed Mode) svinMinDur(u4, s) svinVarLimit(u4, mm², vereiste 3D-variantie
+//  om Survey-In te stoppen). Survey-In bouwt een gewogen gemiddelde van alle
+//  geldige 3D-posities op en stopt zodra ZOWEL svinMinDur ALS svinVarLimit
+//  bereikt zijn; de ontvanger schakelt daarna zelf automatisch over naar
+//  Fixed Mode met die gemeten ECEF-positie — geen handmatige geodetisch->
+//  ECEF-conversie nodig vanuit deze driver.
+//
+//  UBX-TIM-SVIN (0x0D 0x04) payload (28 bytes), zelfde bron, sectie
+//  "TIM-SVIN (0x0D 0x04)": dur(u4,s) meanX/Y/Z(i4×3, ECEF cm) meanV(u4,
+//  mm²) obs(u4) valid(u1) active(u1) reserved(u2) — voortgangsrapportage
+//  tijdens een lopende Survey-In, altijd periodiek aangezet (net als de
+//  NAV-berichten) — onschadelijk als timeMode niet op Survey-In staat, dan
+//  komt gewoon dur/obs=0, valid/active=0 binnen.
 
 #include <QObject>
 #include <QSerialPort>
@@ -103,6 +126,30 @@ struct GpsFix {
     double latitudeDeg = 0.0;
     double longitudeDeg = 0.0;
     bool   hasPosition = false;
+
+    // ECEF-positie uit NAV-SOL (ecefX/Y/Z, cm) — apart van latitudeDeg/
+    // longitudeDeg hierboven, want CFG-TMODE/TIM-SVIN werken zelf ook in
+    // ECEF (cm). Nodig voor TimeModeSupervisor's "is de antenne verplaatst"-
+    // vergelijking: zo is er geen eigen geodetisch<->ECEF-conversie nodig
+    // (en dus geen eigen foutbron) om een verse positie te vergelijken met
+    // de eerder opgeslagen gefixeerde ECEF-positie.
+    qint32 ecefXcm = 0;
+    qint32 ecefYcm = 0;
+    qint32 ecefZcm = 0;
+    bool   hasEcef = false;
+};
+
+// Voortgang van een lopende (of net afgelopen) Survey-In — uit UBX-TIM-SVIN.
+// Zie GpsLink.h bovenaan voor de bronvermelding van de byte-layout.
+struct SurveyInStatus {
+    quint32 durationSec = 0;    // dur — verstreken observatietijd
+    qint32  meanXcm = 0;        // meanX — ECEF, cm
+    qint32  meanYcm = 0;        // meanY — ECEF, cm
+    qint32  meanZcm = 0;        // meanZ — ECEF, cm
+    quint32 meanVarMm2 = 0;     // meanV — huidige 3D-variantie van de meting, mm²
+    quint32 observations = 0;   // obs — aantal gebruikte metingen
+    bool    valid = false;      // valid — positie geldig
+    bool    active = false;     // active — Survey-In loopt nog
 };
 
 class GpsLink : public QObject {
@@ -111,13 +158,73 @@ public:
     explicit GpsLink(QObject *parent = nullptr);
 
     // 9600 8N1, vast voor de LEA-5T (zie projectbrief). Stuurt na het openen
-    // de CFG-MSG-commando's die NAV-SVINFO/NAV-SOL/NAV-DOP periodiek aanzetten.
+    // de CFG-MSG-commando's die NAV-SVINFO/NAV-SOL/NAV-DOP/TIM-SVIN periodiek
+    // aanzetten.
     bool open(const QString &portName);
     void close();
+
+    // Start Time Mode Survey-In (CFG-TMODE, timeMode=1) — zie de toelichting
+    // bovenaan dit bestand. ONVOORWAARDELIJK: stuurt altijd het commando,
+    // ongeacht de huidige staat. Vandaar dat main.cpp dit niet rechtstreeks
+    // aanroept, maar via requestAutoSurveyIn() hieronder — gebruik deze
+    // functie alleen als je bewust een lopende/afgeronde Survey-In wilt
+    // overschrijven (bv. na disableTimeMode(), zie hieronder).
+    // minDurationSeconds: minimale Survey-In-duur, ongeacht hoe snel de
+    // gevraagde nauwkeurigheid al gehaald wordt (voorkomt een toevallig te
+    // vroeg "geluk gehad"-resultaat op een klein aantal fixes).
+    // varLimitMm2: vereiste 3D-positievariantie (mm²) om te stoppen — dus
+    // kwadraat van de gewenste standaarddeviatie in mm.
+    bool startSurveyIn(quint32 minDurationSeconds, quint32 varLimitMm2);
+
+    // Zet Time Mode terug naar Disabled (timeMode=0). Bedoeld voor de
+    // "de antenne is verplaatst"-situatie: eerst dit aanroepen, dan
+    // requestAutoSurveyIn() (of startSurveyIn() rechtstreeks) om een verse
+    // meting te starten — zie main.cpp, --reset-survey-in.
+    bool disableTimeMode();
+
+    // Idempotente, "veilige" variant: vraagt EERST de huidige Time Mode-
+    // status op bij de module (CFG-TMODE poll request) en start Survey-In
+    // ALLEEN als die nog op Disabled staat. Als er al een Survey-In loopt
+    // (timeMode=1) of de module al Fixed staat (timeMode=2), gebeurt er
+    // niets — dat bestaande resultaat blijft met rust.
+    //
+    // Waarom dit nodig is: de LEA-5T onthoudt zijn Time Mode-staat zelf in
+    // RAM zolang de USB-module stroom houdt — een herstart van gpsdo_app
+    // (zonder dat de module zelf stroomloos is geweest) verandert daar
+    // niets aan. Door hier altijd eerst te CHECKEN i.p.v. blind te
+    // versturen, is het veilig om --start-survey-in gewoon standaard in
+    // het opstartcommando te laten staan: een al lopende of al afgeronde
+    // meting wordt nooit per ongeluk gereset door een simpele app-herstart.
+    //
+    // Wat dit NIET doet: automatisch detecteren dat de antenne fysiek is
+    // verplaatst terwijl de module al in Fixed Mode staat. Dat kan deze
+    // hardware/Time Mode-generatie niet betrouwbaar zelf zien — eenmaal in
+    // Fixed Mode gaat de ontvanger er juist van uit dat de positie klopt en
+    // berekent geen onafhankelijke positie meer om tegen te vergelijken.
+    // Dus geen slimme heuristiek/giswerk hier (zelfde voorzichtige aanpak
+    // als bij N/L/H/F en de WWV-procedure elders in dit project) — een
+    // verplaatsing is een bewuste, menselijke actie en verdient een
+    // expliciete trigger: zie disableTimeMode() hierboven en main.cpp,
+    // --reset-survey-in.
+    bool requestAutoSurveyIn(quint32 minDurationSeconds, quint32 varLimitMm2);
+
+    // Zet Time Mode direct op Fixed (timeMode=2) met EXPLICIETE ECEF-
+    // coordinaten — voor TimeModeSupervisor's "positie geverifieerd,
+    // gewoon terugzetten op de al bekende, opgeslagen positie" pad, zonder
+    // daarvoor een nieuwe, uren-tot-dagen-durende Survey-In te hoeven
+    // draaien. posVarMm2: aangenomen 3D-variantie van deze positie (mm²) —
+    // gebruik de variantie die de oorspronkelijke Survey-In opleverde
+    // (TIM-SVIN meanV), niet zomaar 0.
+    bool setFixedPosition(qint32 ecefXcm, qint32 ecefYcm, qint32 ecefZcm, quint32 posVarMm2);
 
 signals:
     void satellitesUpdated(const QList<GpsSatellite> &satellites);
     void fixUpdated(const GpsFix &fix);
+    void surveyInUpdated(const SurveyInStatus &status);
+    // Antwoord op de CFG-TMODE poll request uit requestAutoSurveyIn() (of
+    // een eventuele toekomstige handmatige poll) — het ruwe timeMode-veld
+    // (0=Disabled/1=Survey-In/2=Fixed), voor diagnostiek/logging.
+    void timeModeReported(quint8 timeMode);
     void errorOccurred(const QString &message);
 
 private slots:
@@ -133,10 +240,21 @@ private:
     void handleNavSol(const QByteArray &payload);
     void handleNavDop(const QByteArray &payload);
     void handleNavPosllh(const QByteArray &payload);
+    void handleTimSvin(const QByteArray &payload);
+    void handleCfgTmodeResponse(const QByteArray &payload);
 
     QSerialPort m_port;
     QByteArray  m_rxBuffer;
     GpsFix      m_lastFix; // NAV-SOL, NAV-DOP en NAV-POSLLH vullen elk een deel; hier samengevoegd
+
+    // Staat voor requestAutoSurveyIn(): welke parameters te gebruiken ALS
+    // het antwoord op de poll laat zien dat timeMode nog Disabled is. Puur
+    // eenmalig — gereset na de eerstvolgende CFG-TMODE-respons, dus een
+    // toevallige latere poll (zou hier nooit vandaan komen, maar defensief)
+    // triggert niet nog een keer.
+    bool    m_autoSurveyInPending = false;
+    quint32 m_autoSurveyMinDurationSeconds = 0;
+    quint32 m_autoSurveyVarLimitMm2 = 0;
 
     // Bovengrens voor een geloofwaardige payload-lengte — puur defensief,
     // zodat een toevallig foutief gedetecteerde sync niet leidt tot

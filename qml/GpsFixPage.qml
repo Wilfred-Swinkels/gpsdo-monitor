@@ -95,11 +95,33 @@ Item {
                 font.bold: true
             }
 
+            // --- Time Mode Survey-In-status (UBX-TIM-SVIN) -----------------
+            // Altijd zichtbaar (i.p.v. conditioneel verborgen) zodat de
+            // barChart-hoogte hieronder een vaste, eenvoudige aftrek kan
+            // blijven — zelfde "—" bij geen data-conventie als de rest van
+            // de app. Alleen zinvol nadat de app met --start-survey-in
+            // gestart is, zie main.cpp/GpsLink.h.
+            Text {
+                id: surveyInStatus
+                width: parent.width
+                elide: Text.ElideRight
+                text: "Survey-In: " + (gpsdoModel.surveyInActive
+                          ? "bezig — " + gpsdoModel.surveyInDurationText + ", " + gpsdoModel.surveyInObservations
+                            + "x, huidig " + gpsdoModel.surveyInAccuracyText
+                          : (gpsdoModel.surveyInValid
+                              ? "voltooid (Fixed Mode) — " + gpsdoModel.surveyInDurationText + ", "
+                                + gpsdoModel.surveyInAccuracyText
+                              : "niet actief"))
+                color: page.colInkDim
+                font.pixelSize: 11 * page.uiScale
+                font.family: "monospace"
+            }
+
             // --- balkendiagram --------------------------------------------
             Column {
                 id: barChart
                 width: parent.width
-                height: parent.height - 24 * page.uiScale - tilesRow.height - subtitle.height - 3 * (10 * page.uiScale)
+                height: parent.height - 24 * page.uiScale - tilesRow.height - subtitle.height - surveyInStatus.height - 4 * (10 * page.uiScale)
                 spacing: 4 * page.uiScale
 
                 Repeater {

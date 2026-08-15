@@ -69,6 +69,15 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(double gpsLatitude READ gpsLatitude NOTIFY gpsChanged)
     Q_PROPERTY(double gpsLongitude READ gpsLongitude NOTIFY gpsChanged)
 
+    // Time Mode Survey-In-voortgang (UBX-TIM-SVIN) — alleen zinvol nadat de
+    // app met --start-survey-in gestart is (zie main.cpp/GpsLink.h). Blijft
+    // op de "geen data"-staat staan als Survey-In niet aan staat.
+    Q_PROPERTY(bool surveyInActive READ surveyInActive NOTIFY surveyInChanged)
+    Q_PROPERTY(bool surveyInValid READ surveyInValid NOTIFY surveyInChanged)
+    Q_PROPERTY(QString surveyInDurationText READ surveyInDurationText NOTIFY surveyInChanged)
+    Q_PROPERTY(QString surveyInAccuracyText READ surveyInAccuracyText NOTIFY surveyInChanged)
+    Q_PROPERTY(int surveyInObservations READ surveyInObservations NOTIFY surveyInChanged)
+
     // --- MCP3426 / lamp-/xtal-spanning — NOG NIET BEKABELD -----------------
     Q_PROPERTY(QString lampVoltageText READ lampVoltageText NOTIFY adcChanged)
     Q_PROPERTY(QString xtalVoltageText READ xtalVoltageText NOTIFY adcChanged)
@@ -114,6 +123,12 @@ public:
     double gpsLatitude() const { return m_gpsFix.latitudeDeg; }
     double gpsLongitude() const { return m_gpsFix.longitudeDeg; }
 
+    bool surveyInActive() const { return m_surveyIn.active; }
+    bool surveyInValid() const { return m_surveyIn.valid; }
+    QString surveyInDurationText() const;
+    QString surveyInAccuracyText() const;
+    int surveyInObservations() const { return static_cast<int>(m_surveyIn.observations); }
+
     QString lampVoltageText() const { return QStringLiteral("—"); }
     QString xtalVoltageText() const { return QStringLiteral("—"); }
     QVariantList lampHistory() const { return m_lampHistory; }
@@ -124,6 +139,7 @@ public:
 signals:
     void fllChanged();
     void gpsChanged();
+    void surveyInChanged();
     void adcChanged();
     void lockAcquired();
     void lockLost();
@@ -134,6 +150,7 @@ private slots:
     void onFllStatus(const FllStatus &status);
     void onGpsFix(const GpsFix &fix);
     void onGpsSatellites(const QList<GpsSatellite> &satellites);
+    void onSurveyIn(const SurveyInStatus &status);
     void onRawFllLine(const QByteArray &line);
 
 private:
@@ -144,6 +161,7 @@ private:
     FllStatus m_fllStatus;
     GpsFix m_gpsFix;
     QList<GpsSatellite> m_satellites;
+    SurveyInStatus m_surveyIn;
     QString m_rawFllLine;
 
     // Lopend gemiddelde van computeAccuracyValue(), alleen opgebouwd tijdens

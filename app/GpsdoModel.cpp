@@ -23,6 +23,7 @@ void GpsdoModel::attachFllLink(FllLink *link) {
 void GpsdoModel::attachGpsLink(GpsLink *link) {
     connect(link, &GpsLink::fixUpdated, this, &GpsdoModel::onGpsFix);
     connect(link, &GpsLink::satellitesUpdated, this, &GpsdoModel::onGpsSatellites);
+    connect(link, &GpsLink::surveyInUpdated, this, &GpsdoModel::onSurveyIn);
 }
 
 void GpsdoModel::onFllStatus(const FllStatus &status) {
@@ -67,6 +68,11 @@ void GpsdoModel::onGpsFix(const GpsFix &fix) {
 void GpsdoModel::onGpsSatellites(const QList<GpsSatellite> &satellites) {
     m_satellites = satellites;
     emit gpsChanged();
+}
+
+void GpsdoModel::onSurveyIn(const SurveyInStatus &status) {
+    m_surveyIn = status;
+    emit surveyInChanged();
 }
 
 void GpsdoModel::onRawFllLine(const QByteArray &line) {
@@ -278,6 +284,28 @@ QString GpsdoModel::hdopText() const {
     if (!m_gpsFix.valid)
         return QStringLiteral("—");
     return QString::number(m_gpsFix.hdop, 'f', 2);
+}
+
+QString GpsdoModel::surveyInDurationText() const {
+    if (!m_surveyIn.active && !m_surveyIn.valid && m_surveyIn.observations == 0)
+        return QStringLiteral("— (survey-in niet actief)");
+    const quint32 s = m_surveyIn.durationSec;
+    if (s < 3600)
+        return QStringLiteral("%1m").arg(s / 60);
+    const quint32 hours = s / 3600;
+    const quint32 mins = (s % 3600) / 60;
+    if (hours < 24)
+        return QStringLiteral("%1u%2m").arg(hours).arg(mins, 2, 10, QLatin1Char('0'));
+    return QStringLiteral("%1d %2u").arg(hours / 24).arg(hours % 24);
+}
+
+QString GpsdoModel::surveyInAccuracyText() const {
+    if (!m_surveyIn.active && !m_surveyIn.valid && m_surveyIn.observations == 0)
+        return QStringLiteral("—");
+    // meanVarMm2 is een 3D-variantie in mm² -> stddev in mm is de
+    // vierkantswortel, gedeeld door 1000 voor meters.
+    const double stddevM = std::sqrt(static_cast<double>(m_surveyIn.meanVarMm2)) / 1000.0;
+    return QStringLiteral("±%1 m").arg(stddevM, 0, 'f', 2);
 }
 
 QVariantList GpsdoModel::satellites() const {
