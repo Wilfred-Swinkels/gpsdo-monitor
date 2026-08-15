@@ -53,6 +53,49 @@ Item {
             color: page.colTile
             border.width: 3 * page.uiScale
             border.color: page.stateColorFn(gpsdoModel.lockState)
+            clip: true
+
+            // --- "Star Trek" radiale gloed + shine-sweep (".lock-hero::after"
+            // en ".shine" uit de HTML-mockup) — puur decoratief, zit onder de
+            // tekst-lagen zodat de leesbaarheid niet verandert.
+            Rectangle {
+                id: heroGlow
+                anchors.fill: parent
+                radius: parent.radius
+                opacity: 0.55
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Qt.rgba(page.stateColorFn(gpsdoModel.lockState).r, page.stateColorFn(gpsdoModel.lockState).g, page.stateColorFn(gpsdoModel.lockState).b, 0.14) }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
+            }
+
+            Item {
+                id: shineMask
+                anchors.fill: parent
+                clip: true
+
+                Rectangle {
+                    id: shine
+                    width: lockHero.width * 0.3
+                    height: lockHero.height * 2.4
+                    y: -lockHero.height * 0.7
+                    x: -width
+                    rotation: 18
+                    transformOrigin: Item.Center
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
+
+                    SequentialAnimation on x {
+                        loops: Animation.Infinite
+                        NumberAnimation { from: -shine.width; to: lockHero.width + shine.width; duration: 4500; easing.type: Easing.InOutQuad }
+                        PauseAnimation { duration: 2500 }
+                    }
+                }
+            }
 
             Text {
                 anchors.left: parent.left

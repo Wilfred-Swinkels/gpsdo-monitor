@@ -1,11 +1,12 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
 
-// main.qml — LCARS-stijl kaderwerk (header/rail/footer) rond de
-// Overview-pagina. Bewust een gewone Window i.p.v. ApplicationWindow (geen
-// afhankelijkheid van QtQuick.Controls), en anchors i.p.v. Column/Layout
-// (geen impliciete-hoogte-circulariteit) — zie de projectbrief voor de
-// volledige motivatie.
+// main.qml — LCARS-stijl kaderwerk (header/rail/footer + swipebare
+// pagina's) rond de 8 pagina's van de UI. Bewust een gewone Window i.p.v.
+// ApplicationWindow, en anchors i.p.v. Column/Layout (geen impliciete-
+// hoogte-circulariteit), en geen QtQuick.Controls (paginanavigatie hieronder
+// is met een kale ListView opgebouwd i.p.v. SwipeView) — zie de projectbrief
+// voor de volledige motivatie.
 //
 // Kleuren/lettertypen 1-op-1 overgenomen uit de bestaande HTML-mockup
 // (gpsdo_lcars_720.html). TODO: Antonio/Oswald/Ubuntu Mono zijn nog niet
@@ -14,14 +15,18 @@ import QtQuick.Window 2.15
 // BELANGRIJK — schaling: het ontwerp is getekend op 720x720, maar onder
 // eglfs (fullscreen KMS) negeert Qt de hier opgegeven width/height meestal
 // toch en maakt het venster exact zo groot als het scherm dat de Pi
-// detecteert. Als dat niet exact 720x720 is, werden voorheen alle
-// vast-in-pixels opgegeven marges/lettergroottes verhoudingsgewijs te groot
-// (of te klein) voor het echte scherm — dat verklaarde zowel de afgekapte
-// header-titel als de overlappende tegel-tekst die op de echte hardware
-// zichtbaar waren. `uiScale` (= werkelijke breedte / 720) lost dat op: alle
-// afmetingen hieronder en in OverviewPage/StatTile zijn met deze factor
-// vermenigvuldigd, zodat het ontwerp verhoudingsgewijs klopt op elk scherm,
-// niet alleen op precies 720x720.
+// detecteert. `uiScale` (= werkelijke breedte / 720) compenseert dat: alle
+// afmetingen in dit bestand en in de losse paginabestanden zijn hiermee
+// vermenigvuldigd. Zie eerdere versies van dit bestand / de projectbrief
+// voor de volledige geschiedenis (afgekapte titel, overlappende tegels,
+// een per ongeluk verzonnen verticale balk links — allemaal hierdoor oa.
+// veroorzaakt en opgelost).
+//
+// Paginanavigatie: elke pagina is een los .qml-bestand, hier ingeladen via
+// een Component + Loader per ListView-delegate (i.p.v. alle 8 pagina's
+// altijd volledig te instantiëren) — de niet-zichtbare pagina's bestaan dus
+// pas zodra je er voorbij swipet. Voetnoot-stippen onderin volgen/sturen de
+// huidige pagina, exact zoals de HTML-mockup dat met .dot/.dot.active deed.
 
 Window {
     id: root
@@ -67,6 +72,21 @@ Window {
         onTriggered: root.clockText = Qt.formatTime(new Date(), "hh:mm:ss")
     }
 
+    // --- Achtergrond: hoek-gloed + fijn technisch grid + sterrenveld -------
+    // Zelfde "dual-direction gradient"-truc als de HTML-mockup: rust-gloed
+    // linksboven, ijsblauwe gloed rechtsboven/rechtsonder/linksonder, plus
+    // een zwak 40px-raster. Statisch getekend (geen doorlopende animatie),
+    // dus goedkoop voor de Pi.
+    BackgroundGlow {
+        anchors.fill: parent
+        colGold: root.colGold
+        colIce: root.colIce
+    }
+    StarField {
+        anchors.fill: parent
+        starCount: 30
+    }
+
     // --- Header ----------------------------------------------------------
     Rectangle {
         id: header
@@ -75,6 +95,7 @@ Window {
         anchors.right: parent.right
         height: 64 * root.uiScale
         color: colGold
+        z: 1
 
         Rectangle {
             // LCARS-elleboog: afgeronde linkerhoek van de header
@@ -93,10 +114,6 @@ Window {
             anchors.right: clockLabel.left
             anchors.rightMargin: 12 * root.uiScale
             anchors.verticalCenter: parent.verticalCenter
-            // Begrensd tot clockLabel.left + elide, zodat de titel nooit meer
-            // de klok kan overlappen (was eerder een bug). Lettergrootte
-            // bewust iets kleiner dan de eerste versie (22 i.p.v. 26) zodat
-            // "GPSDO MONITOR" ook echt past i.p.v. te moeten eliden.
             elide: Text.ElideRight
             text: "GPSDO MONITOR"
             color: colBg
@@ -119,17 +136,13 @@ Window {
     }
 
     // --- Header-rail: dunne horizontale gradiëntlijn onder de header -----
-    // Dit is wat er in de originele HTML-mockup (.hdr-rail) staat: een 3px
-    // horizontale lijn goud -> ijsblauw -> grijs, NIET een verticale balk
-    // links. Die verticale balk stond hier eerder (mijn eigen invulling,
-    // niet uit de mockup) en was precies de "witte balk" die op de echte
-    // hardware zichtbaar bleek — vervangen door dit, conform de mockup.
     Rectangle {
         id: headerRail
         anchors.top: header.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         height: 3 * root.uiScale
+        z: 1
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0;  color: colGold }
@@ -138,7 +151,7 @@ Window {
         }
     }
 
-    // --- Footer: paginadots (nu nog maar 1 pagina: Overview) -------------
+    // --- Footer: paginadots ------------------------------------------------
     Rectangle {
         id: footer
         anchors.left: parent.left
@@ -146,37 +159,142 @@ Window {
         anchors.bottom: parent.bottom
         height: 32 * root.uiScale
         color: colSurface
+        z: 1
 
         Row {
             anchors.centerIn: parent
             spacing: 10 * root.uiScale
 
-            Rectangle {
-                width: 10 * root.uiScale
-                height: 10 * root.uiScale
-                radius: width / 2
-                color: colGold
+            Repeater {
+                model: pagesList.count
+                delegate: Rectangle {
+                    required property int index
+                    width: (index === pagesList.currentIndex ? 13 : 9) * root.uiScale
+                    height: width
+                    radius: width / 2
+                    color: index === pagesList.currentIndex ? root.colIce : root.colTile2
+                    border.width: 1
+                    border.color: index === pagesList.currentIndex ? root.colIce : root.colBorder
+                    Behavior on width { NumberAnimation { duration: 150 } }
+
+                    MouseArea {
+                        anchors.margins: -8
+                        anchors.fill: parent
+                        onClicked: pagesList.currentIndex = index
+                    }
+                }
             }
         }
     }
 
-    // --- Inhoud: Overview-pagina ------------------------------------------
-    OverviewPage {
-        id: overviewPage
+    // --- Swipebare pagina's --------------------------------------------
+    ListView {
+        id: pagesList
         anchors.top: headerRail.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: footer.top
+        z: 1
+        orientation: ListView.Horizontal
+        snapMode: ListView.SnapOneItem
+        highlightRangeMode: ListView.StrictlyEnforceRange
+        highlightMoveDuration: 200
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
 
-        uiScale: root.uiScale
-        colBg: root.colBg
-        colTile: root.colTile
-        colTile2: root.colTile2
-        colBorder: root.colBorder
-        colInk: root.colInk
-        colInkDim: root.colInkDim
-        colGold: root.colGold
-        colIce: root.colIce
-        stateColorFn: root.stateColor
+        model: 8
+        delegate: Item {
+            required property int index
+            width: pagesList.width
+            height: pagesList.height
+
+            Loader {
+                anchors.fill: parent
+                sourceComponent: root.pageComponents[index]
+            }
+        }
+    }
+
+    // Elke pagina als los Component (lazy — pas gebouwd zodra je er
+    // voorbij swipet), met dezelfde kleuren/uiScale-props als de tegels.
+    property var pageComponents: [
+        overviewComp, skyplotComp, fllStateComp, gpsFixComp,
+        chronoAnalogComp, chronoDigitalComp, accTrendComp, lampAgingComp
+    ]
+
+    Component {
+        id: overviewComp
+        OverviewPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colTile2: root.colTile2
+            colBorder: root.colBorder; colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+            stateColorFn: root.stateColor
+        }
+    }
+    Component {
+        id: skyplotComp
+        SkyplotPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
+            colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
+    }
+    Component {
+        id: fllStateComp
+        FllStatePage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colSurface: root.colSurface
+            colBorder: root.colBorder; colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+            colLocked: root.colLocked; colUnlocked: root.colUnlocked
+            colHoldover: root.colHoldover; colDisabled: root.colDisabled
+        }
+    }
+    Component {
+        id: gpsFixComp
+        GpsFixPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colSurface: root.colSurface
+            colBorder: root.colBorder; colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
+    }
+    Component {
+        id: chronoAnalogComp
+        ChronoAnalogPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
+            colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
+    }
+    Component {
+        id: chronoDigitalComp
+        ChronoDigitalPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
+            colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
+    }
+    Component {
+        id: accTrendComp
+        AccuracyTrendPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
+            colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
+    }
+    Component {
+        id: lampAgingComp
+        LampAgingPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
+            colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
     }
 }

@@ -1,20 +1,28 @@
 #pragma once
 //
 // GpsdoModel.h — centraal datamodel dat FllLink en GpsLink samenbrengt tot
-// QML-vriendelijke properties voor de Overview-pagina (en later de overige
-// pagina's). Doet zelf geen I/O — puur een "vertaallaag" tussen de twee
-// seriële links en de UI.
+// QML-vriendelijke properties voor alle 8 pagina's van de UI. Doet zelf geen
+// I/O — puur een "vertaallaag" tussen de twee seriële links en de UI.
 //
-// Bewust NIET hier: lamp-/xtal-spanning — de MCP3426 is nog niet bekabeld
-// (Wilfred is de PCB nog aan het maken), dus lampVoltageText()/
+// Uitgebreid t.o.v. de eerste versie (die alleen Overview voedde) met:
+//  - de volledige satellietenlijst (skyplot + GPS-fix-balkjes)
+//  - gedetailleerde FLL-velden + de ruwe statusregel (FLL-state-pagina)
+//  - een groeiende Δf/f-geschiedenis (nauwkeurigheid-trendpagina)
+//  - een (nog lege) lampspanning-geschiedenis-haak, voor zodra de MCP3426
+//    bekabeld is (lampspanning-veroudering-pagina)
+//
+// Bewust NIET hier: lamp-/xtal-spanning zelf — de MCP3426 is nog niet
+// bekabeld (Wilfred is de PCB nog aan het maken), dus lampVoltageText()/
 // xtalVoltageText() geven voorlopig een vaste placeholder terug. Zodra
 // Mcp3426Adc aangesloten wordt: attachAdc(Mcp3426Adc*) toevoegen naar
 // analogie van attachFllLink()/attachGpsLink(), en deze twee properties
-// vullen vanuit de voltageRead()-signalen.
+// vullen vanuit de voltageRead()-signalen (en lampHistory ook echt vullen).
 
 #include <QObject>
 #include <QString>
 #include <QList>
+#include <QVariantList>
+#include <QVariantMap>
 
 #include "FllLink.h"
 #include "GpsLink.h"
@@ -30,6 +38,14 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(QString dacHex READ dacHex NOTIFY fllChanged)
     Q_PROPERTY(QString accuracyText READ accuracyText NOTIFY fllChanged)
 
+    // Gedetailleerde FLL-velden, voor de FLL-state-pagina (osc-grid + status-tiles).
+    Q_PROPERTY(QString freqReadoutHex READ freqReadoutHex NOTIFY fllChanged)
+    Q_PROPERTY(QString sampleCounterHex READ sampleCounterHex NOTIFY fllChanged)
+    Q_PROPERTY(QString accumDiffHex READ accumDiffHex NOTIFY fllChanged)
+    Q_PROPERTY(QString holdoverHex READ holdoverHex NOTIFY fllChanged)
+    Q_PROPERTY(QString alarmText READ alarmText NOTIFY fllChanged)
+    Q_PROPERTY(QString rawFllLine READ rawFllLine NOTIFY rawFllLineChanged)
+
     // --- LEA-5T / GpsLink -------------------------------------------------
     Q_PROPERTY(bool hasGpsData READ hasGpsData NOTIFY gpsChanged)
     Q_PROPERTY(int satsUsed READ satsUsed NOTIFY gpsChanged)
@@ -37,11 +53,23 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(QString snrAvgText READ snrAvgText NOTIFY gpsChanged)
     Q_PROPERTY(QString fixTypeText READ fixTypeText NOTIFY gpsChanged)
     Q_PROPERTY(QString hdopText READ hdopText NOTIFY gpsChanged)
+    // Volledige satellietenlijst als QVariantList van QVariantMap
+    // {svid,elevationDeg,azimuthDeg,cno,usedInFix,unhealthy} — voor de
+    // skyplot (pagina 2) en het balkjesdiagram op de GPS-fix-pagina (4).
+    Q_PROPERTY(QVariantList satellites READ satellites NOTIFY gpsChanged)
 
     // --- MCP3426 / lamp-/xtal-spanning — NOG NIET BEKABELD -----------------
-    // Placeholders totdat de PCB klaar is en Mcp3426Adc hierop aangesloten wordt.
     Q_PROPERTY(QString lampVoltageText READ lampVoltageText NOTIFY adcChanged)
     Q_PROPERTY(QString xtalVoltageText READ xtalVoltageText NOTIFY adcChanged)
+    Q_PROPERTY(QVariantList lampHistory READ lampHistory NOTIFY adcChanged)
+
+    // --- Nauwkeurigheid-geschiedenis (trendpagina 7) ------------------------
+    // Lijst van {t: seconden-sinds-epoch (double), v: Δf/f (double)}, gevuld
+    // zodra er FLL-statusregels binnenkomen. Groeit vanaf het moment dat de
+    // app start (geen persistente opslag — dus bij herstart begint de
+    // geschiedenis opnieuw), begrensd op de laatste 24 uur.
+    Q_PROPERTY(QVariantList accHistory READ accHistory NOTIFY accHistoryChanged)
+    Q_PROPERTY(double lockStartEpoch READ lockStartEpoch NOTIFY accHistoryChanged)
 
 public:
     explicit GpsdoModel(QObject *parent = nullptr);
@@ -56,6 +84,12 @@ public:
     QString lockSubText() const;
     QString dacHex() const;
     QString accuracyText() const;
+    QString freqReadoutHex() const;
+    QString sampleCounterHex() const;
+    QString accumDiffHex() const;
+    QString holdoverHex() const;
+    QString alarmText() const;
+    QString rawFllLine() const { return m_rawFllLine; }
 
     bool hasGpsData() const { return m_gpsFix.valid; }
     int satsUsed() const { return m_gpsFix.numSatellites; }
@@ -63,9 +97,14 @@ public:
     QString snrAvgText() const;
     QString fixTypeText() const;
     QString hdopText() const;
+    QVariantList satellites() const;
 
     QString lampVoltageText() const { return QStringLiteral("—"); }
     QString xtalVoltageText() const { return QStringLiteral("—"); }
+    QVariantList lampHistory() const { return m_lampHistory; }
+
+    QVariantList accHistory() const { return m_accHistory; }
+    double lockStartEpoch() const { return m_lockStartEpoch; }
 
 signals:
     void fllChanged();
@@ -73,14 +112,26 @@ signals:
     void adcChanged();
     void lockAcquired();
     void lockLost();
+    void rawFllLineChanged();
+    void accHistoryChanged();
 
 private slots:
     void onFllStatus(const FllStatus &status);
     void onGpsFix(const GpsFix &fix);
     void onGpsSatellites(const QList<GpsSatellite> &satellites);
+    void onRawFllLine(const QByteArray &line);
 
 private:
+    double computeAccuracyValue() const; // Δf/f als kommagetal, uit m_fllStatus
+    void pushAccHistoryPoint();
+
     FllStatus m_fllStatus;
     GpsFix m_gpsFix;
     QList<GpsSatellite> m_satellites;
+    QString m_rawFllLine;
+
+    QVariantList m_accHistory;
+    double m_lockStartEpoch = 0.0; // 0 = nog nooit gelockt sinds app-start
+
+    QVariantList m_lampHistory; // blijft leeg totdat de MCP3426 bekabeld is
 };
