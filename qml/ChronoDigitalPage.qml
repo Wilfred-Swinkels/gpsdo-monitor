@@ -114,7 +114,7 @@ Item {
                                         width: 162 * page.uiScale
                                         height: 162 * page.uiScale
                                         radius: 22 * page.uiScale
-                                        color: page.colTile
+                                        color: "transparent"
                                         border.width: 4 * page.uiScale
                                         border.color: page.colGold
                                         Text {
@@ -185,7 +185,7 @@ Item {
                                         width: 162 * page.uiScale
                                         height: 162 * page.uiScale
                                         radius: 22 * page.uiScale
-                                        color: page.colTile
+                                        color: "transparent"
                                         border.width: 4 * page.uiScale
                                         border.color: page.colIce
                                         Text {
