@@ -21,6 +21,9 @@ constexpr quint8 kIdCfgMsg = 0x01;
 constexpr quint8 kIdCfgTmode = 0x1D;
 constexpr quint8 kClassTim = 0x0D;
 constexpr quint8 kIdTimSvin = 0x04;
+constexpr quint8 kClassAck = 0x05;
+constexpr quint8 kIdAckNak = 0x00;
+constexpr quint8 kIdAckAck = 0x01;
 
 // Kleine helpers om little-endian 32-bit velden in een CFG-payload op te
 // bouwen — de rest van dit bestand doet alleen het omgekeerde (uitlezen via
@@ -249,6 +252,10 @@ void GpsLink::dispatch(quint8 msgClass, quint8 msgId, const QByteArray &payload)
         // Komt hier alleen binnen als antwoord op onze eigen poll request
         // uit requestAutoSurveyIn() -- de module stuurt dit niet ongevraagd.
         handleCfgTmodeResponse(payload);
+    } else if (msgClass == kClassAck && msgId == kIdAckAck) {
+        handleAck(payload, true);
+    } else if (msgClass == kClassAck && msgId == kIdAckNak) {
+        handleAck(payload, false);
     }
     // Andere klasse/id-combinaties (bv. ACK-ACK op onze CFG-MSG-commando's)
     // worden bewust genegeerd — dit is geen generieke UBX-bibliotheek, alleen
@@ -381,4 +388,12 @@ void GpsLink::handleCfgTmodeResponse(const QByteArray &payload) {
     // timeMode == 1 (Survey-In loopt al) of == 2 (al Fixed): bewust NIETS
     // doen -- dat bestaande resultaat blijft met rust. Zie GpsLink.h voor
     // waarom dit geen "is de antenne verplaatst?"-detectie doet.
+}
+
+void GpsLink::handleAck(const QByteArray &payload, bool acked) {
+    if (payload.size() < 2)
+        return;
+    const quint8 ackedClass = static_cast<quint8>(payload[0]);
+    const quint8 ackedId = static_cast<quint8>(payload[1]);
+    emit ackReceived(ackedClass, ackedId, acked);
 }

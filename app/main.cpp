@@ -40,6 +40,7 @@
 #include <QUrl>
 #include <QTextStream>
 #include <QDebug>
+#include <QTimer>
 
 #include "FllLink.h"
 #include "GpsLink.h"
@@ -104,11 +105,27 @@ int main(int argc, char *argv[]) {
 
     // Puur diagnostisch: laat in stderr zien welke Time Mode-status de
     // module daadwerkelijk terugmeldt (0=Disabled/1=Survey-In/2=Fixed),
-    // ongeacht of dat tot een actie leidt.
-    QObject::connect(&gpsLink, &GpsLink::timeModeReported, &app, [](quint8 mode) {
+    // ongeacht of dat tot een actie leidt. gotTimeModeResponse hieronder
+    // wordt gebruikt door de timeout-check verderop: als deze regel NOOIT
+    // verschijnt, betekent dat dat de module niet reageert op onze
+    // CFG-TMODE-statusvraag (zie die check voor de mogelijke oorzaken).
+    bool gotTimeModeResponse = false;
+    QObject::connect(&gpsLink, &GpsLink::timeModeReported, &app, [&gotTimeModeResponse](quint8 mode) {
+        gotTimeModeResponse = true;
         static const char *names[] = {"Disabled", "Survey-In", "Fixed"};
         const QString name = mode < 3 ? QString::fromLatin1(names[mode]) : QStringLiteral("onbekend (%1)").arg(mode);
         QTextStream(stderr) << "GPS Time Mode (huidige stand): " << name << "\n";
+    });
+
+    // Ook puur diagnostisch: de module bevestigt (ACK) of wijst (NAK) elk
+    // CFG-bericht dat WIJ sturen af — dus ook onze CFG-TMODE-commando's.
+    // Toegevoegd nadat bleek dat de "huidige stand"-regel hierboven soms
+    // helemaal niet verscheen: dit laat zien of de module actief NEE zegt
+    // tegen Time Mode, in plaats van dat het stil blijft.
+    QObject::connect(&gpsLink, &GpsLink::ackReceived, &app, [](quint8 msgClass, quint8 msgId, bool acked) {
+        if (msgClass == 0x06 && msgId == 0x1D) { // CFG-TMODE
+            QTextStream(stderr) << "GPS CFG-TMODE " << (acked ? "geaccepteerd (ACK)" : "AFGEWEZEN door module (NAK)") << "\n";
+        }
     });
 
     if (parser.isSet(gpsOpt)) {
@@ -134,9 +151,26 @@ int main(int argc, char *argv[]) {
             // Altijd actief, geen CLI-vlag nodig — zie toelichting bovenaan
             // dit bestand.
             timeModeSupervisor.begin(minDurationS, varLimitMm2, thresholdM);
-            QTextStream(stderr) << "GPS Time Mode: automatische Survey-In/Fixed-verificatie actief "
+            QTextStream(stderr) << "GPS Time Mode: automatische Survey-In/Fixed-verificatie AANGEVRAAGD "
                                     "(min " << minDurationS << "s, doel-nauwkeurigheid " << accuracyM
-                                 << "m, verplaatsingsdrempel " << thresholdM << "m)\n";
+                                 << "m, verplaatsingsdrempel " << thresholdM << "m) — wacht op reactie "
+                                    "van de module...\n";
+
+            // Diagnostische timeout: als er na 5s nog steeds geen enkele
+            // CFG-TMODE-statusregel verschenen is (zie gotTimeModeResponse
+            // hierboven), reageert de module helemaal niet op onze
+            // statusvraag — dat is dus geen "niet actief"-resultaat maar
+            // een falende aanvraag, en dat verschil was zonder deze regel
+            // niet te zien in de logs.
+            QTimer::singleShot(5000, &app, [&gotTimeModeResponse]() {
+                if (!gotTimeModeResponse) {
+                    QTextStream(stderr) << "Waarschuwing: geen CFG-TMODE-antwoord ontvangen binnen 5s -- "
+                                            "de module reageert niet op de Time Mode-statusvraag. Mogelijke "
+                                            "oorzaken: deze module ondersteunt Time Mode toch niet, of er is "
+                                            "een protocolprobleem. Zie ook of er een ACK/NAK-regel verschenen "
+                                            "is.\n";
+                }
+            });
         } else {
             QTextStream(stderr) << "Waarschuwing: kon GPS-seriele poort niet openen: " << parser.value(gpsOpt) << "\n";
         }

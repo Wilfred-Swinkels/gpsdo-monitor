@@ -229,6 +229,16 @@ signals:
     // een eventuele toekomstige handmatige poll) — het ruwe timeMode-veld
     // (0=Disabled/1=Survey-In/2=Fixed), voor diagnostiek/logging.
     void timeModeReported(quint8 timeMode);
+    // UBX-ACK-ACK/ACK-NAK (0x05 0x01 / 0x05 0x00) — de module bevestigt of
+    // wijst elk CFG-bericht dat WIJ sturen af (zie spec: "Any messages in
+    // Class CFG sent to the receiver are acknowledged... or rejected...").
+    // Toegevoegd specifiek om CFG-TMODE te kunnen diagnosticeren: als de
+    // module Time Mode niet ondersteunt of het commando om wat voor reden
+    // dan ook afwijst, komt dat hier als acked=false binnen i.p.v. stil te
+    // verdwijnen. msgClass/msgId zijn van het bevestigde/afgewezen bericht
+    // (dus bv. 0x06/0x1D voor een CFG-TMODE-commando), niet van deze
+    // ACK/NAK zelf.
+    void ackReceived(quint8 msgClass, quint8 msgId, bool acked);
     void errorOccurred(const QString &message);
 
 private slots:
@@ -246,6 +256,7 @@ private:
     void handleNavPosllh(const QByteArray &payload);
     void handleTimSvin(const QByteArray &payload);
     void handleCfgTmodeResponse(const QByteArray &payload);
+    void handleAck(const QByteArray &payload, bool acked);
 
     QSerialPort m_port;
     QByteArray  m_rxBuffer;
