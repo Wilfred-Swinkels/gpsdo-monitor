@@ -35,6 +35,22 @@ Item {
     // Functie state("L"/"U"/"H"/"D"/...) -> kleur, doorgegeven vanuit main.qml.
     property var stateColorFn: function (state) { return colInkDim }
 
+    // Diepe, bijna-zwarte tint per staat voor de ::after-fade onderin de
+    // lock-hero (".lock-hero::after"/"--hero-fade-rgb" in de HTML-mockup) —
+    // NIET dezelfde kleur als stateColorFn (die is de volle, felle tint voor
+    // de achtergrondvulling); dit is bewust extra donker gemaakt zodat de
+    // witte shine-sweep er goed op afsteekt. Alleen hier nodig, dus lokaal
+    // i.p.v. ook nog een prop erbij op main.qml.
+    function stateFadeColor(state) {
+        switch (state) {
+        case "L": return Qt.rgba(1 / 255, 10 / 255, 7 / 255, 1)
+        case "H": return Qt.rgba(42 / 255, 15 / 255, 4 / 255, 1)
+        case "U": return Qt.rgba(42 / 255, 39 / 255, 8 / 255, 1)
+        case "D": return Qt.rgba(42 / 255, 7 / 255, 5 / 255, 1)
+        default:  return Qt.rgba(0, 0, 0, 1)
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: page.colBg
@@ -50,22 +66,29 @@ Item {
             anchors.margins: 10 * page.uiScale
             height: 118 * page.uiScale
             radius: 8 * page.uiScale
-            color: page.colTile
-            border.width: 3 * page.uiScale
-            border.color: page.stateColorFn(gpsdoModel.lockState)
+            // Volle, felle staatskleur als achtergrondvulling — dit IS de
+            // "groen gevuld vlak" uit de mockup (".lock-hero{background:
+            // var(--blue)}"), geen rand — de eerdere versie had dit per
+            // ongeluk omgedraaid (donkere tegel + gekleurde rand, die rand
+            // heb ik zelf verzonnen, staat niet in de mockup).
+            color: page.stateColorFn(gpsdoModel.lockState)
             clip: true
 
-            // --- "Star Trek" radiale gloed + shine-sweep (".lock-hero::after"
-            // en ".shine" uit de HTML-mockup) — puur decoratief, zit onder de
-            // tekst-lagen zodat de leesbaarheid niet verandert.
+            // --- "Star Trek" helderheids-fade + shine-sweep (".lock-hero::after"
+            // en ".shine" uit de HTML-mockup) — decoratief, onder de tekst.
+            // De fade is een donkere tint van de staatskleur, van ondoorzichtig
+            // onderin naar transparant op de bovenste helft — geeft de vulling
+            // diepte i.p.v. een vlak blok.
             Rectangle {
-                id: heroGlow
+                id: heroFade
                 anchors.fill: parent
                 radius: parent.radius
-                opacity: 0.55
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.rgba(page.stateColorFn(gpsdoModel.lockState).r, page.stateColorFn(gpsdoModel.lockState).g, page.stateColorFn(gpsdoModel.lockState).b, 0.14) }
-                    GradientStop { position: 1.0; color: "transparent" }
+                    GradientStop { position: 0.0;  color: "transparent" }
+                    GradientStop { position: 0.5;  color: "transparent" }
+                    GradientStop { position: 0.66; color: Qt.rgba(page.stateFadeColor(gpsdoModel.lockState).r, page.stateFadeColor(gpsdoModel.lockState).g, page.stateFadeColor(gpsdoModel.lockState).b, 0.2) }
+                    GradientStop { position: 0.82; color: Qt.rgba(page.stateFadeColor(gpsdoModel.lockState).r, page.stateFadeColor(gpsdoModel.lockState).g, page.stateFadeColor(gpsdoModel.lockState).b, 0.45) }
+                    GradientStop { position: 1.0;  color: Qt.rgba(page.stateFadeColor(gpsdoModel.lockState).r, page.stateFadeColor(gpsdoModel.lockState).g, page.stateFadeColor(gpsdoModel.lockState).b, 0.65) }
                 }
             }
 
@@ -85,7 +108,7 @@ Item {
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0.0; color: "transparent" }
-                        GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.10) }
+                        GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.42) }
                         GradientStop { position: 1.0; color: "transparent" }
                     }
 
@@ -97,32 +120,48 @@ Item {
                 }
             }
 
-            Text {
+            Row {
                 anchors.left: parent.left
                 anchors.leftMargin: 20 * page.uiScale
                 anchors.right: parent.right
                 anchors.rightMargin: 20 * page.uiScale
-                anchors.top: parent.top
-                anchors.topMargin: 16 * page.uiScale
-                elide: Text.ElideRight
-                text: gpsdoModel.lockLabel
-                color: page.stateColorFn(gpsdoModel.lockState)
-                font.pixelSize: 36 * page.uiScale
-                font.bold: true
-                font.letterSpacing: 2 * page.uiScale
-            }
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 16 * page.uiScale
 
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 20 * page.uiScale
-                anchors.right: parent.right
-                anchors.rightMargin: 20 * page.uiScale
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 14 * page.uiScale
-                elide: Text.ElideRight
-                text: gpsdoModel.lockSubText
-                color: page.colInkDim
-                font.pixelSize: 13 * page.uiScale
+                Text {
+                    // Groot glyph-teken (".glyph" — hetzelfde staatsteken als op
+                    // de statustegels op de FLL-state-pagina).
+                    text: gpsdoModel.lockState
+                    color: "#ffffff"
+                    font.pixelSize: 58 * page.uiScale
+                    font.bold: true
+                }
+
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 58 * page.uiScale - 16 * page.uiScale
+                    spacing: 3 * page.uiScale
+
+                    Text {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: gpsdoModel.lockLabel
+                        color: "#ffffff"
+                        font.pixelSize: 21 * page.uiScale
+                        font.bold: true
+                        font.letterSpacing: 1 * page.uiScale
+                    }
+
+                    Text {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: gpsdoModel.lockSubText
+                        color: "#ffffff"
+                        opacity: 0.85
+                        font.pixelSize: 11 * page.uiScale
+                        font.family: "monospace"
+                    }
+                }
             }
         }
 
