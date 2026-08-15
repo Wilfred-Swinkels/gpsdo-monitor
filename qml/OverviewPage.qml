@@ -8,16 +8,20 @@ import QtQuick 2.15
 //
 // De 6 grid-tegels volgen bewust exact de eerder afgesproken indeling uit
 // de HTML-mockup/projectbrief (screen 1 "Overview"): lampspanning,
-// xtal-spanning, sats gebruikt, SNR sats, fix-type, DAC-waarde. Een eerdere
-// versie van dit bestand week hiervan af (o.a. FLL-status dubbelop met de
-// lock-hero erboven, HDOP/sats-zichtbaar in plaats van lamp/xtal/DAC) —
-// hersteld naar de oorspronkelijke afspraak.
+// xtal-spanning, sats gebruikt, SNR sats, fix-type, DAC-waarde.
+//
+// `uiScale` komt van main.qml (werkelijke schermbreedte / 720) — alle
+// afmetingen hieronder zijn hiermee vermenigvuldigd zodat de pagina er ook
+// verhoudingsgewijs goed uitziet als het scherm niet exact 720x720 blijkt
+// te zijn. Zie main.qml voor de volledige uitleg.
 //
 // Kleuren worden van main.qml doorgegeven i.p.v. hier hardcoded, zodat er
 // straks maar één plek is om het palet aan te passen.
 
 Item {
     id: page
+
+    property real uiScale: 1.0
 
     // Kleuren, doorgegeven vanuit main.qml.
     property color colBg: "#000000"
@@ -35,7 +39,7 @@ Item {
         anchors.fill: parent
         color: page.colBg
 
-        // --- Lock hero (118px) — alleen state, geen DAC-waarde meer hier ---
+        // --- Lock hero — alleen state, geen DAC-waarde meer hier -----------
         // DAC-waarde staat (zoals afgesproken) in de 6-tegel-grid hieronder,
         // niet ook nog los in de hero — dat was dubbelop.
         Rectangle {
@@ -43,36 +47,39 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 10
-            height: 118
-            radius: 8
+            anchors.margins: 10 * page.uiScale
+            height: 118 * page.uiScale
+            radius: 8 * page.uiScale
             color: page.colTile
-            border.width: 3
+            border.width: 3 * page.uiScale
             border.color: page.stateColorFn(gpsdoModel.lockState)
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 20
+                anchors.leftMargin: 20 * page.uiScale
+                anchors.right: parent.right
+                anchors.rightMargin: 20 * page.uiScale
                 anchors.top: parent.top
-                anchors.topMargin: 16
+                anchors.topMargin: 16 * page.uiScale
+                elide: Text.ElideRight
                 text: gpsdoModel.lockLabel
                 color: page.stateColorFn(gpsdoModel.lockState)
-                font.pixelSize: 40
+                font.pixelSize: 36 * page.uiScale
                 font.bold: true
-                font.letterSpacing: 3
+                font.letterSpacing: 2 * page.uiScale
             }
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 20
+                anchors.leftMargin: 20 * page.uiScale
                 anchors.right: parent.right
-                anchors.rightMargin: 20
+                anchors.rightMargin: 20 * page.uiScale
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 14
+                anchors.bottomMargin: 14 * page.uiScale
                 elide: Text.ElideRight
                 text: gpsdoModel.lockSubText
                 color: page.colInkDim
-                font.pixelSize: 14
+                font.pixelSize: 13 * page.uiScale
             }
         }
 
@@ -80,30 +87,34 @@ Item {
         Rectangle {
             id: accStrip1
             anchors.top: lockHero.bottom
-            anchors.topMargin: 8
+            anchors.topMargin: 8 * page.uiScale
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 10
-            height: 44
-            radius: 6
+            anchors.margins: 10 * page.uiScale
+            height: 44 * page.uiScale
+            radius: 6 * page.uiScale
             color: page.colTile2
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 16
+                anchors.leftMargin: 16 * page.uiScale
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Δf/f"
                 color: page.colInkDim
-                font.pixelSize: 14
+                font.pixelSize: 13 * page.uiScale
             }
             Text {
                 anchors.right: parent.right
-                anchors.rightMargin: 16
+                anchors.rightMargin: 16 * page.uiScale
+                anchors.left: parent.left
+                anchors.leftMargin: 60 * page.uiScale
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
                 anchors.verticalCenter: parent.verticalCenter
                 text: gpsdoModel.accuracyText
                 color: page.colGold
                 font.family: "monospace"
-                font.pixelSize: 18
+                font.pixelSize: 16 * page.uiScale
                 font.bold: true
             }
         }
@@ -116,30 +127,33 @@ Item {
         Rectangle {
             id: accStrip2
             anchors.top: accStrip1.bottom
-            anchors.topMargin: 6
+            anchors.topMargin: 6 * page.uiScale
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 10
-            height: 44
-            radius: 6
+            anchors.margins: 10 * page.uiScale
+            height: 44 * page.uiScale
+            radius: 6 * page.uiScale
             color: page.colTile2
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 16
+                anchors.leftMargin: 16 * page.uiScale
+                anchors.right: parent.right
+                anchors.rightMargin: 60 * page.uiScale
                 anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideRight
                 text: "Lampspanning — veroudering"
                 color: page.colInkDim
-                font.pixelSize: 13
+                font.pixelSize: 12 * page.uiScale
             }
             Text {
                 anchors.right: parent.right
-                anchors.rightMargin: 16
+                anchors.rightMargin: 16 * page.uiScale
                 anchors.verticalCenter: parent.verticalCenter
                 text: "—"
                 color: page.colInkDim
                 font.family: "monospace"
-                font.pixelSize: 16
+                font.pixelSize: 15 * page.uiScale
             }
         }
 
@@ -148,13 +162,13 @@ Item {
         Item {
             id: grid
             anchors.top: accStrip2.bottom
-            anchors.topMargin: 8
+            anchors.topMargin: 8 * page.uiScale
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: 10
+            anchors.margins: 10 * page.uiScale
 
-            property real tileSpacing: 8
+            property real tileSpacing: 8 * page.uiScale
             property real tileWidth: (width - tileSpacing) / 2
             property real tileHeight: (height - 2 * tileSpacing) / 3
 
@@ -163,11 +177,12 @@ Item {
                 y: 0
                 width: grid.tileWidth
                 height: grid.tileHeight
+                uiScale: page.uiScale
                 colTile: page.colTile
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
                 colInk: page.colInk
-                label: "LAMPSPANNING"
+                label: "LAMP"
                 value: gpsdoModel.lampVoltageText
             }
             StatTile {
@@ -175,11 +190,12 @@ Item {
                 y: 0
                 width: grid.tileWidth
                 height: grid.tileHeight
+                uiScale: page.uiScale
                 colTile: page.colTile
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
                 colInk: page.colInk
-                label: "XTAL-SPANNING"
+                label: "XTAL"
                 value: gpsdoModel.xtalVoltageText
             }
             StatTile {
@@ -187,6 +203,7 @@ Item {
                 y: grid.tileHeight + grid.tileSpacing
                 width: grid.tileWidth
                 height: grid.tileHeight
+                uiScale: page.uiScale
                 colTile: page.colTile
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
@@ -199,6 +216,7 @@ Item {
                 y: grid.tileHeight + grid.tileSpacing
                 width: grid.tileWidth
                 height: grid.tileHeight
+                uiScale: page.uiScale
                 colTile: page.colTile
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
@@ -211,6 +229,7 @@ Item {
                 y: 2 * (grid.tileHeight + grid.tileSpacing)
                 width: grid.tileWidth
                 height: grid.tileHeight
+                uiScale: page.uiScale
                 colTile: page.colTile
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
@@ -223,11 +242,12 @@ Item {
                 y: 2 * (grid.tileHeight + grid.tileSpacing)
                 width: grid.tileWidth
                 height: grid.tileHeight
+                uiScale: page.uiScale
                 colTile: page.colTile
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
                 colInk: page.colInk
-                label: "DAC-WAARDE"
+                label: "DAC"
                 value: gpsdoModel.dacHex
             }
         }
