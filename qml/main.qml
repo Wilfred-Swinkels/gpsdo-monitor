@@ -73,9 +73,16 @@ Window {
         }
 
         Text {
+            id: titleText
             anchors.left: parent.left
             anchors.leftMargin: 88
+            anchors.right: clockLabel.left
+            anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
+            // Bewust begrensd tot clockLabel.left + elide: zonder dit liep de
+            // titel bij een lange tekst gewoon door tot-ie de klok overlapte
+            // (gezien op de echte hardware — vaste breedte lost het op).
+            elide: Text.ElideRight
             text: "GPSDO MONITOR"
             color: colBg
             font.pixelSize: 26
@@ -84,6 +91,7 @@ Window {
         }
 
         Text {
+            id: clockLabel
             anchors.right: parent.right
             anchors.rightMargin: 24
             anchors.verticalCenter: parent.verticalCenter
