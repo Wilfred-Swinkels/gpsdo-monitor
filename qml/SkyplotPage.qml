@@ -226,8 +226,8 @@ Item {
                             if (aa.alt > 0) pos[name] = aa
                         }
 
-                        ctx.strokeStyle = "rgba(200,210,225,0.28)"
-                        ctx.lineWidth = 1 * page.uiScale
+                        ctx.strokeStyle = "rgba(210,220,255,0.55)"
+                        ctx.lineWidth = 1.3 * page.uiScale
                         for (var c = 0; c < page.constellationLines.length; c++) {
                             var segs = page.constellationLines[c]
                             for (var l = 0; l < segs.length; l++) {
@@ -241,10 +241,16 @@ Item {
                         for (var starName in pos) {
                             var mag = page.starCatalog[starName][2]
                             var sp = polar(pos[starName].alt, pos[starName].az)
-                            var sr = Math.max(0.8, (2.6 - mag * 0.35)) * page.uiScale
+                            var sr = Math.max(1.1, (3.0 - mag * 0.35)) * page.uiScale
                             ctx.beginPath()
                             ctx.arc(sp[0], sp[1], sr, 0, 2 * Math.PI)
-                            ctx.fillStyle = "rgba(230,236,246,0.8)"
+                            ctx.fillStyle = "rgba(255,255,255,0.98)"
+                            ctx.fill()
+                            // Kleine gloed omheen — maakt de heldere sterren
+                            // beter herkenbaar tussen de satellietstippen.
+                            ctx.beginPath()
+                            ctx.arc(sp[0], sp[1], sr * 2.2, 0, 2 * Math.PI)
+                            ctx.fillStyle = "rgba(210,225,255,0.18)"
                             ctx.fill()
                         }
                     }
