@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Core SerialPort Quick)
 
 # Kernlogica (FllLink + Mcp3426Adc + GpsLink), los van elke UI — kan straks
 # zowel door het CLI-smoke-test-programma hieronder als door de echte
@@ -25,3 +25,17 @@ target_include_directories(gpsdo_core PUBLIC src)
 # hardware te verifiëren vóór de QML-app er staat. Zie README.md voor gebruik.
 add_executable(gpsdo_test_cli src/main_test_cli.cpp)
 target_link_libraries(gpsdo_test_cli PRIVATE gpsdo_core)
+
+# De echte QML-app. QML wordt bewust rechtstreeks van schijf geladen
+# (QUrl::fromLocalFile in app/main.cpp) i.p.v. via het Qt Resource System —
+# zie app/main.cpp voor de motivatie. QML_DIR geeft main.cpp het absolute
+# pad naar de qml/-map in de broncode, zodat dat nooit hard hoeft te worden
+# gecodeerd en gewoon meebeweegt als de repo ergens anders geclonet wordt.
+add_executable(gpsdo_app
+    app/main.cpp
+    app/GpsdoModel.h
+    app/GpsdoModel.cpp
+)
+target_link_libraries(gpsdo_app PRIVATE gpsdo_core Qt6::Quick)
+target_include_directories(gpsdo_app PRIVATE app)
+target_compile_definitions(gpsdo_app PRIVATE QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
