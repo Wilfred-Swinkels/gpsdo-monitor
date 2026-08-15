@@ -1,14 +1,15 @@
 // main_test_cli.cpp
 //
-// Klein smoke-test-programma zonder UI: opent FllLink en/of Mcp3426Adc en
-// print alles wat binnenkomt naar stdout. Bedoeld om de seriële link naar
-// de VE2ZAZ en/of de I2C-ADC te verifiëren zodra de hardware fysiek
+// Klein smoke-test-programma zonder UI: opent FllLink, GpsLink en/of
+// Mcp3426Adc en print alles wat binnenkomt naar stdout. Bedoeld om de
+// seriële links en de I2C-ADC te verifiëren zodra de hardware fysiek
 // aangesloten is — ruim vóór de echte QML-app er staat.
 //
 // Gebruik:
 //   gpsdo_test_cli --fll /dev/ttyUSB0
+//   gpsdo_test_cli --gps /dev/ttyUSB1
 //   gpsdo_test_cli --adc /dev/i2c-1 [--adc-addr 0x68]
-//   gpsdo_test_cli --fll /dev/ttyUSB0 --adc /dev/i2c-1
+//   gpsdo_test_cli --fll /dev/ttyUSB0 --gps /dev/ttyUSB1
 
 #include <QCoreApplication>
 #include <QCommandLineParser>
@@ -18,6 +19,7 @@
 
 #include "FllLink.h"
 #include "Mcp3426Adc.h"
+#include "GpsLink.h"
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
@@ -27,15 +29,17 @@ int main(int argc, char *argv[]) {
     parser.addHelpOption();
 
     QCommandLineOption fllOpt("fll", "Seriele poort naar de VE2ZAZ FLL-controller (bv. /dev/ttyUSB0)", "device");
+    QCommandLineOption gpsOpt("gps", "Seriele poort naar de u-blox LEA-5T (bv. /dev/ttyUSB1)", "device");
     QCommandLineOption adcOpt("adc", "I2C-device voor de MCP3426 (bv. /dev/i2c-1)", "device");
     QCommandLineOption adcAddrOpt("adc-addr", "I2C-adres van de MCP3426 in hex (default 0x68 = suffix A0)", "addr", "0x68");
     parser.addOption(fllOpt);
+    parser.addOption(gpsOpt);
     parser.addOption(adcOpt);
     parser.addOption(adcAddrOpt);
     parser.process(app);
 
-    if (!parser.isSet(fllOpt) && !parser.isSet(adcOpt)) {
-        QTextStream(stderr) << "Geef minstens --fll of --adc op. Zie --help.\n";
+    if (!parser.isSet(fllOpt) && !parser.isSet(gpsOpt) && !parser.isSet(adcOpt)) {
+        QTextStream(stderr) << "Geef minstens --fll, --gps of --adc op. Zie --help.\n";
         return 1;
     }
 
@@ -54,6 +58,44 @@ int main(int argc, char *argv[]) {
 
         if (!fllLink.open(parser.value(fllOpt))) {
             QTextStream(stderr) << "Kon FLL-seriele poort niet openen.\n";
+            return 1;
+        }
+    }
+
+    GpsLink gpsLink;
+    if (parser.isSet(gpsOpt)) {
+        QObject::connect(&gpsLink, &GpsLink::fixUpdated, [](const GpsFix &f) {
+            qInfo().noquote() << QStringLiteral("GPS fix=%1 ok=%2 sats=%3 hdop=%4 pdop=%5")
+                                      .arg(f.fixType)
+                                      .arg(f.fixOk)
+                                      .arg(f.numSatellites)
+                                      .arg(f.hdop, 0, 'f', 2)
+                                      .arg(f.pdop, 0, 'f', 2);
+        });
+        QObject::connect(&gpsLink, &GpsLink::satellitesUpdated, [](const QList<GpsSatellite> &sats) {
+            int used = 0;
+            for (const auto &s : sats)
+                if (s.usedInFix)
+                    ++used;
+            qInfo().noquote() << QStringLiteral("GPS sats: %1 zichtbaar, %2 gebruikt in fix")
+                                      .arg(sats.size())
+                                      .arg(used);
+            for (const auto &s : sats) {
+                qInfo().noquote() << QStringLiteral("  sv%1: elev=%2 azim=%3 cno=%4dBHz used=%5%6")
+                                          .arg(s.svid)
+                                          .arg(s.elevationDeg)
+                                          .arg(s.azimuthDeg)
+                                          .arg(s.cno)
+                                          .arg(s.usedInFix)
+                                          .arg(s.unhealthy ? " UNHEALTHY" : "");
+            }
+        });
+        QObject::connect(&gpsLink, &GpsLink::errorOccurred, [](const QString &msg) {
+            qWarning().noquote() << "GPS-fout:" << msg;
+        });
+
+        if (!gpsLink.open(parser.value(gpsOpt))) {
+            QTextStream(stderr) << "Kon GPS-seriele poort niet openen.\n";
             return 1;
         }
     }
