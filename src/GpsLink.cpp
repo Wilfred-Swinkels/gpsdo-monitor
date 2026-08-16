@@ -20,6 +20,7 @@ constexpr quint8 kClassCfg = 0x06;
 constexpr quint8 kIdCfgMsg = 0x01;
 constexpr quint8 kIdCfgTmode = 0x1D;
 constexpr quint8 kIdCfgTmode2 = 0x3D; // diagnostische poll, zie GpsLink.h
+constexpr quint8 kIdCfgTmode3 = 0x71; // idem, "Time Mode 3" gezien in u-center
 constexpr quint8 kClassTim = 0x0D;
 constexpr quint8 kIdTimSvin = 0x04;
 constexpr quint8 kClassAck = 0x05;
@@ -86,6 +87,11 @@ bool GpsLink::open(const QString &portName) {
     // u-center deze fysieke 5T wél in Survey-In krijgt terwijl onze eigen
     // CFG-TMODE (0x1D)-pogingen consequent een NAK opleverden.
     m_port.write(buildFrame(kClassCfg, kIdCfgTmode2, QByteArray()));
+
+    // Idem, maar dan voor CFG-TMODE3 (0x71) — Wilfred zag een "Time Mode
+    // 3"-pagina in u-center, dat is vermoedelijk dit bericht i.p.v. TMODE2.
+    // Zie de "VERVOLG"-toelichting bovenaan GpsLink.h.
+    m_port.write(buildFrame(kClassCfg, kIdCfgTmode3, QByteArray()));
     return true;
 }
 
@@ -290,6 +296,9 @@ void GpsLink::dispatch(quint8 msgClass, quint8 msgId, const QByteArray &payload)
         // (i.p.v. een ACK-NAK, die via handleAck()/ackReceived hierboven
         // afgehandeld wordt). Nog geen parser, zie GpsLink.h.
         emit cfgTmode2RawResponseReceived(payload);
+    } else if (msgClass == kClassCfg && msgId == kIdCfgTmode3) {
+        // Idem, voor de diagnostische CFG-TMODE3-poll.
+        emit cfgTmode3RawResponseReceived(payload);
     }
     // Andere klasse/id-combinaties (bv. ACK-ACK op onze CFG-MSG-commando's)
     // worden bewust genegeerd — dit is geen generieke UBX-bibliotheek, alleen

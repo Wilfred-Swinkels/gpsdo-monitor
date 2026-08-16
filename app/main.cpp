@@ -130,6 +130,11 @@ int main(int argc, char *argv[]) {
                                  << (acked ? "geaccepteerd (ACK) -- deze 5T ondersteunt blijkbaar TOCH TMODE2!"
                                            : "AFGEWEZEN door module (NAK)")
                                  << "\n";
+        } else if (msgClass == 0x06 && msgId == 0x71) { // CFG-TMODE3 ("Time Mode 3" in u-center, diagnostische testpoll)
+            QTextStream(stderr) << "GPS CFG-TMODE3 (diagnostische testpoll) "
+                                 << (acked ? "geaccepteerd (ACK) -- deze 5T ondersteunt blijkbaar TOCH TMODE3!"
+                                           : "AFGEWEZEN door module (NAK)")
+                                 << "\n";
         }
     });
 
@@ -140,6 +145,13 @@ int main(int argc, char *argv[]) {
         QTextStream(stderr) << "GPS CFG-TMODE2 (diagnostische testpoll) -- module antwoordde inhoudelijk met "
                              << payload.size() << " databytes: " << payload.toHex(' ')
                              << " -- dit bewijst dat deze module TMODE2 ondersteunt.\n";
+    });
+
+    // Idem voor de CFG-TMODE3-poll ("Time Mode 3" in u-center).
+    QObject::connect(&gpsLink, &GpsLink::cfgTmode3RawResponseReceived, &app, [](const QByteArray &payload) {
+        QTextStream(stderr) << "GPS CFG-TMODE3 (diagnostische testpoll) -- module antwoordde inhoudelijk met "
+                             << payload.size() << " databytes: " << payload.toHex(' ')
+                             << " -- dit bewijst dat deze module TMODE3 ondersteunt.\n";
     });
 
     // Puur diagnostisch: laat zien wat de module zelf claimt te zijn/kunnen

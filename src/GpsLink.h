@@ -112,6 +112,27 @@
 // NAK), VOORDAT er een echte CFG-TMODE2-implementatie (startSurveyIn() etc.
 // omzetten naar het andere byte-formaat) gebouwd wordt. Zie
 // cfgTmode2RawResponseReceived() hieronder en main.cpp voor de logging.
+//
+// VERVOLG (Wilfred, zelfde dag): in u-center zelf ziet Wilfred een
+// "Time Mode 3"-pagina staan — dat is vermoedelijk UBX-CFG-TMODE3 (0x06
+// 0x71), NIET TMODE2. Onderzoek (3 onafhankelijke, onderling matchende
+// code-bronnen: ublox_msgs/CfgTMODE3.msg, PX4/GpsDrivers ubx.h/.cpp, en
+// python-ubx) bevestigt de 40-byte payload hieronder — LET OP: officieel
+// vereist CFG-TMODE3 protocolversie 20+ (de M8P/High-Precision-lijn), dus
+// het is onzeker of deze u5-gebaseerde 5T 'm ook daadwerkelijk accepteert;
+// u-center kan de pagina gewoon altijd tonen ongeacht of de aangesloten
+// ontvanger 'm ondersteunt. Vandaar: OOK hiervan nu een read-only
+// diagnostische poll (lege payload, zelfde patroon als TMODE2 hierboven)
+// i.p.v. blind aannemen dat dit hét antwoord is. Byte-layout (Set- en
+// Poll-Response-payload zijn identiek):
+//   version(U1@0) reserved1(U1@1) flags(X2@2, bits0-7=mode
+//   0=Disabled/1=Survey-In/2=Fixed, bit8=lla 0=ECEF/1=lat-lon-alt)
+//   ecefXOrLat(I4@4, cm of 1e-7deg) ecefYOrLon(I4@8) ecefZOrAlt(I4@12)
+//   ecefXOrLatHP(I1@16, 0.1mm/1e-9deg-extensie, -99..99)
+//   ecefYOrLonHP(I1@17) ecefZOrAltHP(I1@18) reserved2(U1@19)
+//   fixedPosAcc(U4@20, 0.1mm) svinMinDur(U4@24,s) svinAccLimit(U4@28,
+//   0.1mm) reserved3(U1[8]@32) — totaal 40 bytes. Zie
+//   cfgTmode3RawResponseReceived() hieronder en main.cpp voor de logging.
 
 #include <QObject>
 #include <QSerialPort>
@@ -272,6 +293,10 @@ signals:
     // (i.p.v. NAK zoals bij 0x1D) — een echte parser komt er pas als dat
     // bevestigd is.
     void cfgTmode2RawResponseReceived(const QByteArray &payload);
+    // Zelfde als cfgTmode2RawResponseReceived() hierboven, maar dan voor de
+    // diagnostische CFG-TMODE3 (0x06 0x71)-poll — zie de "VERVOLG"-
+    // toelichting bovenaan dit bestand.
+    void cfgTmode3RawResponseReceived(const QByteArray &payload);
     void errorOccurred(const QString &message);
 
 private slots:
