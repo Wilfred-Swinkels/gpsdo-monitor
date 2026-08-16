@@ -40,13 +40,14 @@ void GpsdoModel::onFllStatus(const FllStatus &status) {
         if (status.state == QLatin1Char('L') && m_lockStartEpoch == 0.0) {
             m_lockStartEpoch = QDateTime::currentMSecsSinceEpoch() / 1000.0;
         }
-        pushAccHistoryPoint();
 
         // Lopend gemiddelde, ALLEEN over samples tijdens een ononderbroken
         // "L"-periode — zie computeAccuracyAvgValue()/accuracyAvgText()
         // hieronder voor het waarom (middelt kwantisatieruis weg, maar is
         // zinloos tijdens Unlocked/Holdover, dus dan resetten i.p.v. door-
-        // middelen met acquisitie-ruis).
+        // middelen met acquisitie-ruis). Bewust VOOR pushAccHistoryPoint()
+        // bijgewerkt, zodat het "avg"-veld van het zo-meteen gepushte punt
+        // deze sample al meetelt i.p.v. een sample achterloopt.
         if (status.state == QLatin1Char('L')) {
             if (m_avgAccCount == 0)
                 m_avgAccWindowStartEpoch = QDateTime::currentMSecsSinceEpoch() / 1000.0;
@@ -57,6 +58,8 @@ void GpsdoModel::onFllStatus(const FllStatus &status) {
             m_avgAccCount = 0;
             m_avgAccWindowStartEpoch = 0.0;
         }
+
+        pushAccHistoryPoint();
     }
 }
 
@@ -226,6 +229,13 @@ void GpsdoModel::pushAccHistoryPoint() {
     QVariantMap point;
     point.insert(QStringLiteral("t"), epoch);
     point.insert(QStringLiteral("v"), computeAccuracyValue());
+    // Lopend gemiddelde op dit moment (zie computeAccuracyAvgValue()) —
+    // alleen aanwezig tijdens een ononderbroken "L"-periode, want buiten
+    // lock is er geen zinnig gemiddelde. AccuracyTrendPage.qml plot deze
+    // reeks i.p.v. de rauwe/gekwantiseerde "v"-reeks hierboven.
+    if (m_avgAccCount > 0) {
+        point.insert(QStringLiteral("avg"), computeAccuracyAvgValue());
+    }
     m_accHistory.append(point);
 
     // Begrens op de laatste 24 uur, met een harde backstop op het aantal

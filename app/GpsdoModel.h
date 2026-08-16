@@ -84,10 +84,16 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(QVariantList lampHistory READ lampHistory NOTIFY adcChanged)
 
     // --- Nauwkeurigheid-geschiedenis (trendpagina 7) ------------------------
-    // Lijst van {t: seconden-sinds-epoch (double), v: Δf/f (double)}, gevuld
+    // Lijst van {t: seconden-sinds-epoch (double), v: instantane Δf/f
+    // (double), avg: lopend gemiddelde Δf/f sinds het begin van de huidige
+    // ononderbroken "L"-periode (double, alleen aanwezig als er op dat
+    // moment al een gemiddelde is — zie computeAccuracyAvgValue())}, gevuld
     // zodra er FLL-statusregels binnenkomen. Groeit vanaf het moment dat de
     // app start (geen persistente opslag — dus bij herstart begint de
-    // geschiedenis opnieuw), begrensd op de laatste 24 uur.
+    // geschiedenis opnieuw), begrensd op de laatste 24 uur. AccuracyTrend-
+    // Page.qml plot de "avg"-reeks (niet "v") — die is niet gekwantiseerd
+    // in stappen van 6,25e-9 zoals de rauwe instant-waarde, zie
+    // computeAccuracyAvgValue() hieronder voor het waarom.
     Q_PROPERTY(QVariantList accHistory READ accHistory NOTIFY accHistoryChanged)
     Q_PROPERTY(double lockStartEpoch READ lockStartEpoch NOTIFY accHistoryChanged)
 

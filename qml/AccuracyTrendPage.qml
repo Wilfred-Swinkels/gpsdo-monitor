@@ -3,6 +3,16 @@ import QtQuick 2.15
 // AccuracyTrendPage.qml — pagina 7: nauwkeurigheids-trend (Δf/f), met een
 // readout-rij, een zoom-schakelaar (venster in minuten, 0=alles), een
 // logaritmische TrendChart en een bijschrift dat de meetmethode uitlegt.
+//
+// Op verzoek plot de grafiek de "avg"-reeks uit gpsdoModel.accHistory (het
+// lopende gemiddelde sinds het begin van de huidige ononderbroken
+// "L"-periode — zelfde waarde als het "avg:"-panel op het Overview-scherm)
+// i.p.v. de rauwe instant-samples ("v"). Die rauwe reeks is gekwantiseerd
+// in stappen van 6,25e-9 (zie GpsdoModel::computeAccuracyValue()) en oogt
+// daardoor als een grillige trap i.p.v. een trend; het gemiddelde middelt
+// die kwantisatiestap juist geleidelijk weg. Punten van vóór de eerste
+// lock (of tijdens Unlocked/Holdover, waar geen gemiddelde is) hebben geen
+// "avg"-veld en worden hier weggefilterd — zie avgHistoryPoints().
 
 Item {
     id: page
@@ -56,6 +66,22 @@ Item {
         var pts = gpsdoModel.accHistory
         if (!pts || pts.length === 0) return NaN
         return pts[pts.length - 1].v
+    }
+
+    // Voor de grafiek: alleen de punten met een "avg"-veld (zie
+    // GpsdoModel::pushAccHistoryPoint()), en dan als {t, v: avg} zodat
+    // TrendChart (generiek, verwacht {t, v}) er zonder aanpassing mee kan
+    // tekenen.
+    function avgHistoryPoints() {
+        var pts = gpsdoModel.accHistory
+        if (!pts) return []
+        var out = []
+        for (var i = 0; i < pts.length; i++) {
+            var p = pts[i]
+            if (p.avg === undefined || p.avg === null || isNaN(p.avg)) continue
+            out.push({ t: p.t, v: p.avg })
+        }
+        return out
     }
 
     Rectangle {
@@ -130,7 +156,7 @@ Item {
                 width: parent.width
                 height: parent.height - 24 * page.uiScale - readoutRow.height - zoom.height - caption.height - 4 * (8 * page.uiScale)
                 uiScale: page.uiScale
-                points: gpsdoModel.accHistory
+                points: page.avgHistoryPoints()
                 windowSeconds: page.windowMinutes * 60
                 yMode: "log"
                 yMinLog: 1e-11
@@ -146,7 +172,7 @@ Item {
                 id: caption
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "Δf/f uit VE2ZAZ freq.-uitlezing t.o.v. 0x6800, gemiddeld via geaccumuleerd verschil — vereist averaging-modus M02 (Summing)."
+                text: "Δf/f uit VE2ZAZ freq.-uitlezing t.o.v. 0x6800, gemiddeld via geaccumuleerd verschil — vereist averaging-modus M02 (Summing). Grafiek toont het lopende gemiddelde sinds de laatste ononderbroken lock, niet de rauwe sample-voor-sample uitlezing."
                 color: page.colInkDim
                 font.pixelSize: 10 * page.uiScale
                 font.italic: true
