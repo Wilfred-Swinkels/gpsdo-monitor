@@ -1,15 +1,26 @@
 // main_test_cli.cpp
 //
-// Klein smoke-test-programma zonder UI: opent FllLink, GpsLink en/of
-// Mcp3426Adc en print alles wat binnenkomt naar stdout. Bedoeld om de
-// seriële links en de I2C-ADC te verifiëren zodra de hardware fysiek
-// aangesloten is — ruim vóór de echte QML-app er staat.
+// Klein smoke-test-programma zonder UI: opent FllLink, GpsLink, Mcp3426Adc
+// en/of Tsic506Driver en print alles wat binnenkomt naar stdout. Bedoeld om
+// de seriële links, de I2C-ADC en de ZACwire-temperatuursensor te
+// verifiëren zodra de hardware fysiek aangesloten is — ruim vóór de echte
+// QML-app er staat.
 //
 // Gebruik:
 //   gpsdo_test_cli --fll /dev/ttyUSB0
 //   gpsdo_test_cli --gps /dev/ttyUSB1
 //   gpsdo_test_cli --adc /dev/i2c-1 [--adc-addr 0x68]
+//   gpsdo_test_cli --tsic 17       (BCM-GPIO-nummer, niet de pinheader-positie —
+//                                    17 is Wilfreds gekozen pin voor de TSic 506F,
+//                                    zie Tsic506Driver.h)
 //   gpsdo_test_cli --fll /dev/ttyUSB0 --gps /dev/ttyUSB1
+//
+// --tsic vereist root (pigpio praat rechtstreeks met /dev/gpiomem), dus:
+//   sudo ./build/gpsdo_test_cli --tsic 17
+//
+// De MCP3426 (--adc) hangt aan de standaard I2C1-bus van de Pi (GPIO2=SDA/
+// GPIO3=SCL, /dev/i2c-1) — geen apart GPIO-nummer nodig, dat ligt al vast
+// aan het device-pad.
 
 #include <QCoreApplication>
 #include <QCommandLineParser>
@@ -20,6 +31,7 @@
 #include "FllLink.h"
 #include "Mcp3426Adc.h"
 #include "GpsLink.h"
+#include "Tsic506Driver.h"
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
@@ -32,14 +44,16 @@ int main(int argc, char *argv[]) {
     QCommandLineOption gpsOpt("gps", "Seriele poort naar de u-blox LEA-5T (bv. /dev/ttyUSB1)", "device");
     QCommandLineOption adcOpt("adc", "I2C-device voor de MCP3426 (bv. /dev/i2c-1)", "device");
     QCommandLineOption adcAddrOpt("adc-addr", "I2C-adres van de MCP3426 in hex (default 0x68 = suffix A0)", "addr", "0x68");
+    QCommandLineOption tsicOpt("tsic", "BCM-GPIO-nummer van de TSic 506F ZACwire-signaalpin (Wilfreds gekozen pin: 17)", "gpio", "17");
     parser.addOption(fllOpt);
     parser.addOption(gpsOpt);
     parser.addOption(adcOpt);
     parser.addOption(adcAddrOpt);
+    parser.addOption(tsicOpt);
     parser.process(app);
 
-    if (!parser.isSet(fllOpt) && !parser.isSet(gpsOpt) && !parser.isSet(adcOpt)) {
-        QTextStream(stderr) << "Geef minstens --fll, --gps of --adc op. Zie --help.\n";
+    if (!parser.isSet(fllOpt) && !parser.isSet(gpsOpt) && !parser.isSet(adcOpt) && !parser.isSet(tsicOpt)) {
+        QTextStream(stderr) << "Geef minstens --fll, --gps, --adc of --tsic op. Zie --help.\n";
         return 1;
     }
 
@@ -137,6 +151,27 @@ int main(int argc, char *argv[]) {
         ch2.dividerRatio = 1.0;
 
         adc.start(parser.value(adcOpt), addr, ch1, ch2);
+    }
+
+    Tsic506Driver tsic;
+    if (parser.isSet(tsicOpt)) {
+        bool ok = false;
+        const int gpio = parser.value(tsicOpt).toInt(&ok);
+        if (!ok) {
+            QTextStream(stderr) << "Ongeldig --tsic GPIO-nummer.\n";
+            return 1;
+        }
+
+        QObject::connect(&tsic, &Tsic506Driver::temperatureRead, [](double celsius, quint16 raw) {
+            qInfo().noquote() << QStringLiteral("TSic506: %1 °C (raw=%2)")
+                                      .arg(celsius, 0, 'f', 3)
+                                      .arg(raw);
+        });
+        QObject::connect(&tsic, &Tsic506Driver::errorOccurred, [](const QString &msg) {
+            qWarning().noquote() << "TSic506-fout:" << msg;
+        });
+
+        tsic.start(gpio);
     }
 
     return app.exec();

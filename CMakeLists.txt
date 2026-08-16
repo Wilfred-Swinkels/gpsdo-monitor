@@ -7,9 +7,9 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core SerialPort Quick)
 
-# Kernlogica (FllLink + Mcp3426Adc + GpsLink), los van elke UI — kan straks
-# zowel door het CLI-smoke-test-programma hieronder als door de echte
-# QML-app gebruikt worden.
+# Kernlogica (FllLink + Mcp3426Adc + GpsLink + Tsic506Driver), los van elke
+# UI — kan straks zowel door het CLI-smoke-test-programma hieronder als
+# door de echte QML-app gebruikt worden.
 add_library(gpsdo_core STATIC
     src/FllLink.h
     src/FllLink.cpp
@@ -17,12 +17,15 @@ add_library(gpsdo_core STATIC
     src/Mcp3426Adc.cpp
     src/GpsLink.h
     src/GpsLink.cpp
+    src/Tsic506Driver.h
+    src/Tsic506Driver.cpp
 )
-target_link_libraries(gpsdo_core PUBLIC Qt6::Core Qt6::SerialPort)
+target_link_libraries(gpsdo_core PUBLIC Qt6::Core Qt6::SerialPort pigpio pthread)
 target_include_directories(gpsdo_core PUBLIC src)
 
-# Klein CLI-programma zonder UI, om FllLink/Mcp3426Adc/GpsLink tegen echte
-# hardware te verifiëren vóór de QML-app er staat. Zie README.md voor gebruik.
+# Klein CLI-programma zonder UI, om FllLink/Mcp3426Adc/GpsLink/Tsic506Driver
+# tegen echte hardware te verifiëren vóór de QML-app er staat. Zie
+# README.md voor gebruik.
 add_executable(gpsdo_test_cli src/main_test_cli.cpp)
 target_link_libraries(gpsdo_test_cli PRIVATE gpsdo_core)
 

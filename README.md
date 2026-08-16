@@ -18,10 +18,11 @@ lamp-/xtal-spanning op het scherm is voorlopig een placeholder ("—").
 
 ## Bouwen (op de Raspberry Pi)
 
-Vereist: Qt6 (Core + SerialPort + Quick), CMake ≥ 3.16, een C++17-compiler.
+Vereist: Qt6 (Core + SerialPort + Quick), CMake ≥ 3.16, een C++17-compiler,
+en libpigpio (voor de TSic 506F-temperatuursensor, ZACwire via GPIO).
 
 ```sh
-sudo apt install qt6-base-dev qt6-serialport-dev qt6-declarative-dev cmake build-essential
+sudo apt install qt6-base-dev qt6-serialport-dev qt6-declarative-dev cmake build-essential libpigpio-dev
 git clone https://github.com/Wilfred-Swinkels/gpsdo-monitor.git
 cd gpsdo-monitor
 cmake -B build
@@ -31,6 +32,12 @@ cmake --build build
 Als `qt6-declarative-dev` niet bestaat onder die naam op jouw Raspberry Pi OS-
 versie: zoek met `apt search qt6 | grep -i quick` naar het juiste pakket
 (vaak iets als `qt6-quick-dev` of `qt6-declarative`).
+
+**Let op — pigpiod-daemon uitzetten indien geïnstalleerd.** `Tsic506Driver`
+linkt rechtstreeks tegen libpigpio (geen `pigpiod`) en praat zelf met
+`/dev/gpiomem`. Als de `pigpiod`-systemd-service ook draait, botsen de twee
+op dezelfde GPIO-hardware: `sudo systemctl disable --now pigpiod` als die
+per ongeluk actief staat.
 
 ## De echte UI draaien
 
@@ -124,15 +131,17 @@ sudo systemctl start gpsdo-monitor # weer aanzetten als je klaar bent
 ./build/gpsdo_test_cli --fll /dev/ttyUSB0
 ./build/gpsdo_test_cli --gps /dev/ttyACM0
 ./build/gpsdo_test_cli --adc /dev/i2c-1
+sudo ./build/gpsdo_test_cli --tsic 17   # 17 = Wilfreds gekozen GPIO voor de TSic 506F
 ./build/gpsdo_test_cli --fll /dev/ttyUSB0 --gps /dev/ttyACM0
 ```
 
-Print live de FLL-statusregels, GPS-fix/satellietdata en/of ADC-spanningen
-naar stdout — handig om de bekabeling en drivers te verifiëren los van de
-UI. Welke `/dev/tty*` bij welk apparaat hoort: de VE2ZAZ (CH340-adapter)
-komt binnen als `/dev/ttyUSB0`, de u-blox LEA-5T heeft een eigen USB-
-interface en komt binnen als `/dev/ttyACM0` — anders even `dmesg | tail`
-na het inpluggen bekijken.
+Print live de FLL-statusregels, GPS-fix/satellietdata, ADC-spanningen en/of
+TSic506-temperatuur naar stdout — handig om de bekabeling en drivers te
+verifiëren los van de UI. Welke `/dev/tty*` bij welk apparaat hoort: de
+VE2ZAZ (CH340-adapter) komt binnen als `/dev/ttyUSB0`, de u-blox LEA-5T
+heeft een eigen USB-interface en komt binnen als `/dev/ttyACM0` — anders
+even `dmesg | tail` na het inpluggen bekijken. `--tsic` heeft root nodig
+(pigpio praat rechtstreeks met `/dev/gpiomem`).
 
 ## Snel itereren
 
@@ -150,6 +159,10 @@ git pull && cmake --build build && ./run.sh
 - `src/Mcp3426Adc.h` / `src/Mcp3426Adc.cpp` — I2C-driver voor de MCP3426
   ADC (lamp-/xtal-spanning van de LPRO-101), met stale-data-detectie. Nog
   niet bekabeld.
+- `src/Tsic506Driver.h` / `src/Tsic506Driver.cpp` — ZACwire-driver (via
+  pigpio, GPIO-edge-interrupts) voor de IST AG TSic 506F-temperatuursensor,
+  bedoeld om Δf/f-drift te correleren met omgevingstemperatuur bij de Rb-
+  bron. Nog niet bekabeld/getest tegen een echte sensor.
 - `src/main_test_cli.cpp` — CLI-smoke-test-programma, geen UI.
 - `app/GpsdoModel.h` / `app/GpsdoModel.cpp` — vertaallaag tussen FllLink/
   GpsLink en de QML-UI (properties als `lockLabel`, `accuracyText`,
