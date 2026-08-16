@@ -161,7 +161,7 @@ double GpsdoModel::computeAccuracyAvgValue() const {
 // weergave-berekening op de al binnenkomende statuslijnen.
 QString GpsdoModel::accuracyAvgText() const {
     if (m_avgAccCount == 0)
-        return QStringLiteral("gem: wacht op ononderbroken lock");
+        return QStringLiteral("wacht op ononderbroken lock");
 
     const double avg = computeAccuracyAvgValue();
     const double windowSec = QDateTime::currentMSecsSinceEpoch() / 1000.0 - m_avgAccWindowStartEpoch;
@@ -177,7 +177,7 @@ QString GpsdoModel::accuracyAvgText() const {
         windowText = QStringLiteral("%1u%2m").arg(hours).arg(mins, 2, 10, QLatin1Char('0'));
     }
 
-    return QStringLiteral("gem. %1 (%2x): %3%4")
+    return QStringLiteral("%1 (%2x): %3%4")
         .arg(windowText)
         .arg(m_avgAccCount)
         .arg(avg >= 0 ? QStringLiteral("+") : QString())

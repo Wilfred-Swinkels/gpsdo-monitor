@@ -177,30 +177,26 @@ Item {
             radius: 6 * page.uiScale
             color: page.colTile2
 
+            // Op verzoek: het "Δf/f"-labeltje is weg (de waarde hieronder
+            // spreekt voor zich) en de instant Δf/f-waarde (was hier eerst,
+            // colGold/28px) is vervangen door het langzaam verfijnende
+            // gemiddelde. "gem:" is hernoemd naar "avg:" en staat nu als los
+            // labeltje helemaal links in de tegel; de waarde zelf (uit
+            // GpsdoModel::accuracyAvgText(), die de "gem./avg"-prefix niet
+            // meer zelf bevat) staat hor./vert. gecentreerd in de tegel.
+            // Software-only, raakt de FLL-mode niet aan.
             Text {
+                id: accAvgLabel
                 anchors.left: parent.left
                 anchors.leftMargin: 16 * page.uiScale
-                anchors.top: parent.top
-                anchors.topMargin: 12 * page.uiScale
-                text: "Δf/f"
+                anchors.verticalCenter: parent.verticalCenter
+                text: "avg:"
                 color: page.colInkDim
+                font.family: "monospace"
                 font.pixelSize: 17 * page.uiScale
             }
-            // Op verzoek: de instant Δf/f-waarde (was hier eerst, colGold/
-            // 28px) is vervangen door het langzaam verfijnende gemiddelde
-            // hieronder — zelfde tegel, zelfde kleur/tekstgrootte als de
-            // instant-waarde had. Zie GpsdoModel::accuracyAvgText() voor het
-            // waarom (middelt de 6,25e-9-kwantisatie van een losse sample
-            // geleidelijk weg). Software-only, raakt de FLL-mode niet aan.
             Text {
-                anchors.right: parent.right
-                anchors.rightMargin: 16 * page.uiScale
-                anchors.left: parent.left
-                anchors.leftMargin: 90 * page.uiScale
-                horizontalAlignment: Text.AlignRight
-                elide: Text.ElideLeft
-                anchors.top: parent.top
-                anchors.topMargin: 6 * page.uiScale
+                anchors.centerIn: parent
                 text: gpsdoModel.accuracyAvgText
                 color: page.colGold
                 font.family: "monospace"
