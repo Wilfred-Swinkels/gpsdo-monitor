@@ -34,8 +34,11 @@ versie: zoek met `apt search qt6 | grep -i quick` naar het juiste pakket
 
 ## De echte UI draaien
 
+Op de eigenlijke Pi-console (KMS/DRM, geen X/Wayland) draait `gpsdo_app` via
+het `eglfs`-platform-plugin, met de cursor uitgezet:
+
 ```sh
-./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0
+QT_QPA_PLATFORM=eglfs QT_QPA_EGLFS_HIDECURSOR=1 ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0
 ```
 
 Opent een 720×720 venster met de Overview-pagina: lock-status (LOCKED/
@@ -46,9 +49,28 @@ status. `--fll` en `--gps` zijn allebei optioneel — laat je er een weg,
 dan blijft het bijbehorende deel van het scherm op "—" staan i.p.v. dat
 het programma crasht.
 
+**Kortere starter — `run.sh`** regelt bovenstaande `cd`+env-vars+commando in
+één keer (net als een DOS-batchbestand):
+
+```sh
+./run.sh
+```
+
+Eenmalig instellen als los systeemcommando, zodat je overal gewoon
+`gpsdo-monitor` kunt typen (ook buiten deze map):
+
+```sh
+chmod +x run.sh
+sudo ln -s "$(pwd)/run.sh" /usr/local/bin/gpsdo-monitor
+```
+
+Daarna start `gpsdo-monitor` de app vanaf elke directory — het script zoekt
+zelf zijn locatie op en `cd`'t daarnaartoe, dus dit hoeft maar één keer.
+Extra argumenten worden doorgegeven, bv. `gpsdo-monitor --reset-survey-in`.
+
 De QML-bestanden (`qml/*.qml`) worden rechtstreeks van schijf geladen, dus
 een QML-only wijziging testen op de Pi is gewoon `git pull` — geen
-herbouwen nodig, alleen `gpsdo_app` opnieuw starten.
+herbouwen nodig, alleen `gpsdo_app` (of `gpsdo-monitor`) opnieuw starten.
 
 ## Smoke-test zonder UI
 
@@ -69,7 +91,7 @@ na het inpluggen bekijken.
 ## Snel itereren
 
 ```sh
-git pull && cmake --build build && ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0
+git pull && cmake --build build && ./run.sh
 ```
 
 ## Bestanden
