@@ -186,6 +186,12 @@ Item {
                 color: page.colInkDim
                 font.pixelSize: 17 * page.uiScale
             }
+            // Op verzoek: de instant Δf/f-waarde (was hier eerst, colGold/
+            // 28px) is vervangen door het langzaam verfijnende gemiddelde
+            // hieronder — zelfde tegel, zelfde kleur/tekstgrootte als de
+            // instant-waarde had. Zie GpsdoModel::accuracyAvgText() voor het
+            // waarom (middelt de 6,25e-9-kwantisatie van een losse sample
+            // geleidelijk weg). Software-only, raakt de FLL-mode niet aan.
             Text {
                 anchors.right: parent.right
                 anchors.rightMargin: 16 * page.uiScale
@@ -195,30 +201,11 @@ Item {
                 elide: Text.ElideLeft
                 anchors.top: parent.top
                 anchors.topMargin: 6 * page.uiScale
-                text: gpsdoModel.accuracyText
+                text: gpsdoModel.accuracyAvgText
                 color: page.colGold
                 font.family: "monospace"
                 font.pixelSize: 28 * page.uiScale
                 font.bold: true
-            }
-            // Langzaam verfijnend gemiddelde sinds de huidige ononderbroken
-            // lock — zie GpsdoModel::accuracyAvgText() voor het waarom
-            // (middelt de 6,25e-9-kwantisatie van de instant-waarde
-            // hierboven geleidelijk weg). Software-only, raakt de FLL-mode
-            // niet aan.
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 16 * page.uiScale
-                anchors.right: parent.right
-                anchors.rightMargin: 16 * page.uiScale
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 10 * page.uiScale
-                horizontalAlignment: Text.AlignRight
-                elide: Text.ElideLeft
-                text: gpsdoModel.accuracyAvgText
-                color: page.colInkDim
-                font.family: "monospace"
-                font.pixelSize: 12 * page.uiScale
             }
         }
 
