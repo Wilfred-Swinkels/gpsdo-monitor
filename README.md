@@ -72,6 +72,52 @@ De QML-bestanden (`qml/*.qml`) worden rechtstreeks van schijf geladen, dus
 een QML-only wijziging testen op de Pi is gewoon `git pull` — geen
 herbouwen nodig, alleen `gpsdo_app` (of `gpsdo-monitor`) opnieuw starten.
 
+**Let op — handmatig starten via een SSH-sessie geeft `Permission denied`.**
+`./run.sh`/`gpsdo-monitor` rechtstreeks over SSH draaien loopt tegen twee
+permissieproblemen aan die er bij een fysieke, lokale console-sessie niet
+zijn: de seriële poorten (`Permission error while locking the device`,
+normaal group `dialout`) en het HDMI-scherm zelf (`Could not set/queue DRM
+mode/page flip ... Permission denied` — `systemd-logind` geeft eglfs/KMS-
+toegang tot `/dev/dri/card0` dynamisch alleen aan de actieve lokale
+("seat0") sessie, niet automatisch aan SSH). Zie "Automatisch starten bij
+boot" hieronder voor de structurele oplossing — die omzeilt dit door de UI
+als systemd-service te draaien i.p.v. handmatig vanuit een shell.
+
+## Automatisch starten bij boot
+
+Voor het toestel dat gewoon standalone moet draaien (touchscreen aan, geen
+laptop/SSH nodig): `systemd/gpsdo-monitor.service` start `run.sh`
+automatisch bij het opstarten, herstart 'm zelf bij een crash, en draait
+als `root` — dat omzeilt in één keer zowel het seriële-poort- als het
+DRM/seat-permissieprobleem hierboven (root heeft altijd toegang tot elk
+device-node). `Environment=HOME=/home/wilfred` in de unit zorgt dat de
+opgeslagen-Time-Mode-positie (`TimeModeSupervisor`, zie de projectbrief)
+toch onder wilfreds eigen homedir blijft staan, ook al draait het proces
+technisch als root.
+
+```sh
+sudo cp systemd/gpsdo-monitor.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gpsdo-monitor.service
+```
+
+Status/logs bekijken:
+
+```sh
+systemctl status gpsdo-monitor
+journalctl -u gpsdo-monitor -f
+```
+
+**Voor handmatig testen/debuggen** (bv. na een `git pull`+rebuild) moet de
+service eerst gestopt worden — anders probeert een handmatige `./run.sh`
+hetzelfde DRM-scherm te pakken dat de service al vasthoudt, en faalt:
+
+```sh
+sudo systemctl stop gpsdo-monitor
+./run.sh                          # handmatig testen
+sudo systemctl start gpsdo-monitor # weer aanzetten als je klaar bent
+```
+
 ## Smoke-test zonder UI
 
 ```sh

@@ -1,0 +1,37 @@
+[Unit]
+# gpsdo-monitor.service -- start de touchscreen-UI automatisch bij het
+# opstarten van de Pi, los van elke SSH-sessie. Aanleiding: handmatig
+# starten via SSH liep tegen twee "Permission denied"-problemen aan die
+# er bij een eerdere, LOKALE (fysieke console) sessie niet waren:
+#   1. FllLink/GpsLink konden /dev/ttyUSB0 en /dev/ttyACM0 niet openen
+#      ("Permission error while locking the device") -- seriele poorten
+#      zijn normaal group "dialout", en een losse SSH-login hoeft daar
+#      geen lid van te zijn/te blijven na een group-wijziging zonder
+#      opnieuw in te loggen.
+#   2. "Could not set/queue DRM mode/page flip ... (Permission denied)"
+#      op HDMI1 -- eglfs praat rechtstreeks met /dev/dri/card0 (KMS), en
+#      systemd-logind geeft dat soort device-toegang dynamisch alleen aan
+#      de actieve LOKALE ("seat0") sessie, niet automatisch aan een
+#      SSH-sessie.
+# Draaien als root omgaat BEIDE problemen in een keer (root heeft altijd
+# toegang tot elk device-node, ongeacht group/seat-ACL's) -- een gangbare,
+# pragmatische keuze voor een toestel met precies 1 taak en geen andere
+# gebruikers/netwerkblootstelling. Environment=HOME hieronder zorgt dat
+# TimeModeSupervisor's opgeslagen-positie-JSON (zie GpsLink.h/
+# TimeModeSupervisor.h) toch onder wilfreds eigen homedir blijft staan --
+# QStandardPaths::AppDataLocation leest gewoon $HOME, ongeacht de
+# daadwerkelijke UID waaronder het proces draait.
+Description=GPSDO Monitor UI (720x720 touchscreen dashboard)
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+User=root
+Environment=HOME=/home/wilfred
+ExecStart=/home/wilfred/gpsdo-monitor/run.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
