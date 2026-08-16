@@ -19,6 +19,7 @@ constexpr quint8 kIdNavPosllh = 0x02;
 constexpr quint8 kClassCfg = 0x06;
 constexpr quint8 kIdCfgMsg = 0x01;
 constexpr quint8 kIdCfgTmode = 0x1D;
+constexpr quint8 kIdCfgTmode2 = 0x3D; // diagnostische poll, zie GpsLink.h
 constexpr quint8 kClassTim = 0x0D;
 constexpr quint8 kIdTimSvin = 0x04;
 constexpr quint8 kClassAck = 0x05;
@@ -78,6 +79,13 @@ bool GpsLink::open(const QString &portName) {
     // toegevoegd om te kunnen verifiëren of deze module zichzelf als
     // timing-capable identificeert, zie versionInfoReceived() in de header.
     m_port.write(buildFrame(kClassMon, kIdMonVer, QByteArray()));
+
+    // Diagnostisch, eveneens read-only (lege payload = poll, geen Set): zie
+    // de "DIAGNOSE"-toelichting bij CFG-TMODE2 bovenaan GpsLink.h. Test of
+    // deze module CFG-TMODE2 (0x3D) beantwoordt/accepteert, nu bekend is dat
+    // u-center deze fysieke 5T wél in Survey-In krijgt terwijl onze eigen
+    // CFG-TMODE (0x1D)-pogingen consequent een NAK opleverden.
+    m_port.write(buildFrame(kClassCfg, kIdCfgTmode2, QByteArray()));
     return true;
 }
 
@@ -276,6 +284,12 @@ void GpsLink::dispatch(quint8 msgClass, quint8 msgId, const QByteArray &payload)
         handleAck(payload, false);
     } else if (msgClass == kClassMon && msgId == kIdMonVer) {
         handleMonVer(payload);
+    } else if (msgClass == kClassCfg && msgId == kIdCfgTmode2) {
+        // Diagnostische CFG-TMODE2-poll uit open() — komt hier alleen
+        // binnen als de module ECHT met een CFG-TMODE2-bericht antwoordt
+        // (i.p.v. een ACK-NAK, die via handleAck()/ackReceived hierboven
+        // afgehandeld wordt). Nog geen parser, zie GpsLink.h.
+        emit cfgTmode2RawResponseReceived(payload);
     }
     // Andere klasse/id-combinaties (bv. ACK-ACK op onze CFG-MSG-commando's)
     // worden bewust genegeerd — dit is geen generieke UBX-bibliotheek, alleen

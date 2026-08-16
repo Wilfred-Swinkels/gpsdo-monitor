@@ -97,6 +97,21 @@
 //  tijdens een lopende Survey-In, altijd periodiek aangezet (net als de
 //  NAV-berichten) — onschadelijk als timeMode niet op Survey-In staat, dan
 //  komt gewoon dur/obs=0, valid/active=0 binnen.
+//
+// DIAGNOSE (Wilfred, 2026-08-16): op echte hardware NAK't deze LEA-5T
+// CFG-TMODE (0x1D), zowel de poll-variant als het Set-commando (zie
+// main.cpp) — maar
+// Wilfred kreeg dezelfde fysieke module met u-center 8.17 wél in
+// Survey-In. Meest waarschijnlijke verklaring: deze "5T"-firmware
+// implementeert het NIEUWERE UBX-CFG-TMODE2 (0x06 0x3D, officieel pas
+// gedocumenteerd vanaf u-blox 6) i.p.v./naast de legacy 0x1D, en u-center
+// detecteert dat automatisch en gebruikt het juiste bericht. open()
+// stuurt nu daarom ALTIJD ook een read-only diagnostische poll van
+// CFG-TMODE2 (lege payload, net als de bestaande CFG-TMODE-poll) — puur
+// om empirisch te bevestigen of dat klopt (ACK/inhoudelijk antwoord i.p.v.
+// NAK), VOORDAT er een echte CFG-TMODE2-implementatie (startSurveyIn() etc.
+// omzetten naar het andere byte-formaat) gebouwd wordt. Zie
+// cfgTmode2RawResponseReceived() hieronder en main.cpp voor de logging.
 
 #include <QObject>
 #include <QSerialPort>
@@ -249,6 +264,14 @@ signals:
     // de praktijk een NAK opleverde op echte hardware — zie main.cpp.
     void versionInfoReceived(const QString &swVersion, const QString &hwVersion,
                               const QStringList &extensions);
+    // Antwoord op de diagnostische CFG-TMODE2 (0x06 0x3D)-poll die open()
+    // automatisch verstuurt (zie de "DIAGNOSE"-toelichting bovenaan dit
+    // bestand) — de RUWE payload-bytes, nog niet geparsed (CFG-TMODE2 heeft
+    // een ander byte-formaat dan de legacy CFG-TMODE, zie u-blox M8 spec).
+    // Alleen bedoeld om te bevestigen DAT de module inhoudelijk antwoordt
+    // (i.p.v. NAK zoals bij 0x1D) — een echte parser komt er pas als dat
+    // bevestigd is.
+    void cfgTmode2RawResponseReceived(const QByteArray &payload);
     void errorOccurred(const QString &message);
 
 private slots:

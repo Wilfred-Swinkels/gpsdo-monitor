@@ -123,9 +123,23 @@ int main(int argc, char *argv[]) {
     // helemaal niet verscheen: dit laat zien of de module actief NEE zegt
     // tegen Time Mode, in plaats van dat het stil blijft.
     QObject::connect(&gpsLink, &GpsLink::ackReceived, &app, [](quint8 msgClass, quint8 msgId, bool acked) {
-        if (msgClass == 0x06 && msgId == 0x1D) { // CFG-TMODE
+        if (msgClass == 0x06 && msgId == 0x1D) { // CFG-TMODE (legacy, u-blox 5)
             QTextStream(stderr) << "GPS CFG-TMODE " << (acked ? "geaccepteerd (ACK)" : "AFGEWEZEN door module (NAK)") << "\n";
+        } else if (msgClass == 0x06 && msgId == 0x3D) { // CFG-TMODE2 (diagnostische testpoll, zie GpsLink.h)
+            QTextStream(stderr) << "GPS CFG-TMODE2 (diagnostische testpoll) "
+                                 << (acked ? "geaccepteerd (ACK) -- deze 5T ondersteunt blijkbaar TOCH TMODE2!"
+                                           : "AFGEWEZEN door module (NAK)")
+                                 << "\n";
         }
+    });
+
+    // Antwoord op dezelfde diagnostische CFG-TMODE2-poll, maar dan het geval
+    // dat de module ECHT met een inhoudelijk CFG-TMODE2-bericht antwoordt
+    // i.p.v. een ACK/NAK — nog sterker bewijs dat TMODE2 ondersteund wordt.
+    QObject::connect(&gpsLink, &GpsLink::cfgTmode2RawResponseReceived, &app, [](const QByteArray &payload) {
+        QTextStream(stderr) << "GPS CFG-TMODE2 (diagnostische testpoll) -- module antwoordde inhoudelijk met "
+                             << payload.size() << " databytes: " << payload.toHex(' ')
+                             << " -- dit bewijst dat deze module TMODE2 ondersteunt.\n";
     });
 
     // Puur diagnostisch: laat zien wat de module zelf claimt te zijn/kunnen
