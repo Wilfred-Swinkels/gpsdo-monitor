@@ -2,10 +2,22 @@ import QtQuick 2.15
 
 // ChronoAnalogPage.qml — pagina 5: analoge klok (Canvas i.p.v. SVG, zelfde
 // tekentechniek als de HTML-mockup: 60 tick-marks, uur/minuut/seconde-
-// wijzers, gouden hub), UTC/CEST-knoppen aan weerszijden (i.p.v. een
+// wijzers, gouden hub), UTC/LOKAAL-knoppen aan weerszijden (i.p.v. een
 // samen-gegroepeerde schakelaar in het midden — de knop zelf laat al zien
 // welke weergave actief is, dus geen aparte "Weergave: ..."-tekst meer
 // nodig), en een decoratieve "stardate"-regel rechts uitgelijnd.
+//
+// BUGFIX (Wilfred, 2026-08-16): zelfde bug als in ChronoDigitalPage.qml —
+// displayDate() gaf in "UTC"-stand gewoon de rauwe new Date() terug, en die
+// wordt verderop met LOKALE getters (getHours() e.d.) uitgelezen om de
+// wijzers te tekenen, dus de "UTC"-knop toonde in werkelijkheid de lokale
+// tijd. In de andere stand (was hardcoded "CEST") werd er bovenop die
+// (al lokale) tijd nóg eens 2 uur bijgeteld — dubbel verschoven, en fout
+// buiten de zomertijd. Fix: voor "UTC" wordt de Date-waarde met de eigen
+// tijdzone-offset verschoven zodat de bestaande lokale getters toch de
+// juiste UTC-tijd teruggeven; de andere knop ("LOKAAL", was "CEST") geeft nu
+// gewoon de rauwe systeemtijd terug, zonder handmatige offset — de
+// tijdzone-instelling van de Pi zelf regelt CET/CEST-omschakeling al.
 //
 // Sterrenbeelden-achtergrond: dezelfde echte sterrencatalogus + Alt/Az-
 // berekening als SkyplotPage.qml (zelfde tijd, zelfde GPS-positie), ACHTER
@@ -29,7 +41,7 @@ Item {
     property color colGold: "#f3714f"
     property color colIce: "#80c8ec"
 
-    property string tzMode: "CEST"
+    property string tzMode: "LOKAAL"
     property date now: new Date()
 
     Timer {
@@ -45,10 +57,13 @@ Item {
     // springen (zie de Canvas-Timer verderop, die nu veel vaker herschildert).
     function displayDate() {
         var raw = new Date()
-        if (page.tzMode === "CEST") {
-            var d = new Date(raw.getTime())
-            d.setHours(d.getHours() + 2)
-            return d
+        if (page.tzMode === "UTC") {
+            // Verderop (onPaint) wordt d uitgelezen met de LOKALE getters
+            // (getHours()/getMinutes()/getSeconds()) om de wijzers te
+            // tekenen. Door hier de tijdstempel met de eigen tijdzone-
+            // offset te verschuiven, geven diezelfde lokale getters toch
+            // de correcte UTC-tijd terug — geen aparte UTC-tekencode nodig.
+            return new Date(raw.getTime() + raw.getTimezoneOffset() * 60000)
         }
         return raw
     }
@@ -210,7 +225,7 @@ Item {
                 text: "Chronometer — analoog"
             }
 
-            // --- UTC/CEST-knoppen aan weerszijden i.p.v. samen in het midden ---
+            // --- UTC/LOKAAL-knoppen aan weerszijden i.p.v. samen in het midden ---
             Item {
                 id: toggleRow
                 width: parent.width
@@ -240,26 +255,26 @@ Item {
                 }
 
                 Rectangle {
-                    id: cestBtn
+                    id: localBtn
                     anchors.right: parent.right
                     height: parent.height
-                    width: cestLabel.implicitWidth + 26 * page.uiScale
+                    width: localLabel.implicitWidth + 26 * page.uiScale
                     radius: height / 2
-                    color: page.tzMode === "CEST" ? page.colIce : page.colTile
+                    color: page.tzMode === "LOKAAL" ? page.colIce : page.colTile
                     border.width: 2 * page.uiScale
-                    border.color: page.tzMode === "CEST" ? page.colIce : page.colBorder
+                    border.color: page.tzMode === "LOKAAL" ? page.colIce : page.colBorder
                     Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
-                        id: cestLabel
+                        id: localLabel
                         anchors.centerIn: parent
-                        text: "CEST"
-                        color: page.tzMode === "CEST" ? "#06232f" : page.colInkDim
+                        text: "LOKAAL"
+                        color: page.tzMode === "LOKAAL" ? "#06232f" : page.colInkDim
                         font.pixelSize: 14 * page.uiScale
                         font.bold: true
                         font.letterSpacing: 1 * page.uiScale
                     }
-                    MouseArea { anchors.fill: parent; onClicked: page.tzMode = "CEST" }
+                    MouseArea { anchors.fill: parent; onClicked: page.tzMode = "LOKAAL" }
                 }
             }
 

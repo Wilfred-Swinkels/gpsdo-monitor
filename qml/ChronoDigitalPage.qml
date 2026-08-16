@@ -2,8 +2,8 @@ import QtQuick 2.15
 
 // ChronoDigitalPage.qml — pagina 6: twee even grote digi-groups BOVEN
 // elkaar (niet naast elkaar — zie ".digi-hero{flex-direction:column}" in de
-// mockup): bovenaan lokale tijd (CEST, goud), onderaan UTC (ijsblauw), elk
-// met H/M/S in omrande blokken en knipperende ':'-scheidingstekens, plus een
+// mockup): bovenaan lokale tijd (goud), onderaan UTC (ijsblauw), elk met
+// H/M/S in omrande blokken en knipperende ':'-scheidingstekens, plus een
 // datumregel per kant en een gedeelde stardate-regel onderaan.
 //
 // Cijferblokken zijn op verzoek 3x zo groot gemaakt (54->162px @ uiScale 1)
@@ -11,6 +11,21 @@ import QtQuick 2.15
 // boven elkaar i.p.v. naast elkaar geeft daar toch al ruimte voor over).
 // Label/datumtekst is bewust minder fors opgeschaald (niet letterlijk 3x) —
 // dat zijn geen "kloktekst"-cijfers, alleen bijgeschaald voor balans.
+//
+// BUGFIX (Wilfred, 2026-08-16): de UTC-groep gebruikte per ongeluk
+// getHours()/getMinutes()/getSeconds() (= JS Date-getters in de LOKALE
+// systeem-tijdzone van de Pi) i.p.v. getUTCHours()/getUTCMinutes()/
+// getUTCSeconds() — daardoor stond er onder het "UTC"-label gewoon de
+// lokale tijd. Zie main.qml's headerklok (clockTimeText/clockDateText),
+// die dit altijd al correct met de UTC-getters deed; dezelfde aanpak is nu
+// hier toegepast. Tegelijk deed de "lokale tijd"-groep het OMGEKEERDE: die
+// nam page.now (al lokale systeemtijd via de gewone getters) en telde er
+// via localDate() nog eens hardcoded 2 uur (CEST) bovenop — dus 2 uur te
+// laat/vroeg, en fout in de winter (CET = UTC+1, niet +2). localDate() is
+// verwijderd; de lokale groep gebruikt nu gewoon page.now rechtstreeks en
+// vertrouwt op de tijdzone-instelling van de Pi zelf (bv. via `timedatectl
+// set-timezone Europe/Amsterdam`) — die regelt CET/CEST-omschakeling al
+// automatisch, dat hoeft deze QML niet zelf te doen.
 
 Item {
     id: page
@@ -33,12 +48,6 @@ Item {
 
     function pad2(n) { return (n < 10 ? "0" : "") + n }
 
-    function localDate() {
-        var d = new Date(page.now.getTime())
-        d.setHours(d.getHours() + 2)
-        return d
-    }
-
     function stardateFor(d) {
         var dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
         var dayFrac = (d.getTime() - dayStart.getTime()) / 86400000
@@ -49,6 +58,12 @@ Item {
 
     function dateLine(d) {
         return page.dayNames[d.getDay()] + " " + pad2(d.getDate()) + "-" + pad2(d.getMonth() + 1) + "-" + d.getFullYear()
+    }
+
+    // UTC-variant van dateLine() hierboven — gebruikt de UTC-getters i.p.v.
+    // de lokale, voor de UTC-groep onderaan.
+    function dateLineUtc(d) {
+        return page.dayNames[d.getUTCDay()] + " " + pad2(d.getUTCDate()) + "-" + pad2(d.getUTCMonth() + 1) + "-" + d.getUTCFullYear()
     }
 
     // Achtergrond bewust transparant — de gedeelde sterrenveld/hoek-gloed-
@@ -78,7 +93,7 @@ Item {
                 height: parent.height - 24 * page.uiScale - stardateFooter.height - 2 * (8 * page.uiScale)
                 spacing: 10 * page.uiScale
 
-                // --- lokale tijd (CEST) ---------------------------------
+                // --- lokale tijd -------------------------------------------
                 Rectangle {
                     width: parent.width
                     height: (groupsColumn.height - groupsColumn.spacing) / 2
@@ -93,7 +108,7 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "LOKAAL — CEST"
+                            text: "LOKAAL"
                             color: page.colGold
                             font.pixelSize: 20 * page.uiScale
                             font.letterSpacing: 1
@@ -105,9 +120,9 @@ Item {
                             spacing: 8 * page.uiScale
 
                             Repeater {
-                                model: [ page.pad2(page.localDate().getHours()),
-                                         page.pad2(page.localDate().getMinutes()),
-                                         page.pad2(page.localDate().getSeconds()) ]
+                                model: [ page.pad2(page.now.getHours()),
+                                         page.pad2(page.now.getMinutes()),
+                                         page.pad2(page.now.getSeconds()) ]
                                 delegate: Row {
                                     spacing: 8 * page.uiScale
                                     Rectangle {
@@ -141,7 +156,7 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: page.dateLine(page.localDate())
+                            text: page.dateLine(page.now)
                             color: page.colInkDim
                             font.pixelSize: 15 * page.uiScale
                             font.family: "monospace"
@@ -176,9 +191,9 @@ Item {
                             spacing: 8 * page.uiScale
 
                             Repeater {
-                                model: [ page.pad2(page.now.getHours()),
-                                         page.pad2(page.now.getMinutes()),
-                                         page.pad2(page.now.getSeconds()) ]
+                                model: [ page.pad2(page.now.getUTCHours()),
+                                         page.pad2(page.now.getUTCMinutes()),
+                                         page.pad2(page.now.getUTCSeconds()) ]
                                 delegate: Row {
                                     spacing: 8 * page.uiScale
                                     Rectangle {
@@ -212,7 +227,7 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: page.dateLine(page.now)
+                            text: page.dateLineUtc(page.now)
                             color: page.colInkDim
                             font.pixelSize: 15 * page.uiScale
                             font.family: "monospace"
