@@ -102,6 +102,7 @@
 
 #include <QObject>
 #include <QThread>
+#include <QVector>
 
 class Tsic506Driver : public QObject {
     Q_OBJECT
@@ -123,7 +124,10 @@ public:
     // in de .cpp voor waarom bewust niet gpioSetISRFuncEx() gebruikt wordt.
     // Dit is GEEN polling-lus zoals bij Mcp3426Adc, want ZACwire's ~125µs
     // bit-venster is te snel voor een QTimer-polling-aanpak op een niet-
-    // realtime OS).
+    // realtime OS). Zet ook pigpio's DMA-sample-interval op 1µs i.p.v. de
+    // standaard 5µs (zie .cpp) — een poging om meetruis op de korte
+    // (~tientallen µs) lage-fase-duren te verkleinen; nog niet empirisch
+    // bevestigd of dit daadwerkelijk helpt.
     void start(int gpioPin);
     void stop();
 
@@ -143,6 +147,18 @@ signals:
     // eigen watchdog-timeout - langdurige stilte op de pin (sensor niet
     // aangesloten/geen voeding/verkeerde GPIO).
     void errorOccurred(const QString &message);
+
+    // Diagnose-signaal (18-08-2026), toegevoegd om de resterende foutfre-
+    // quentie te kunnen onderzoeken zonder een logic-analyzer: vuurt voor
+    // ÉLKE poging om een byte te decoderen (geslaagd én mislukt), met de
+    // gemeten Tstrobe-referentie (µs) en de rauwe lage-fase-duur (µs) van
+    // elk van de 9 bits in dat byte (8 data + 1 pariteit, in ontvangst-
+    // volgorde). Zo is direct te zien of de "0"-cluster echt rond 2×Tstrobe
+    // zit, hoeveel jitter erop zit, en of de 1,5×Tstrobe-drempel
+    // (kBitThresholdFactor) goed gekozen is — i.p.v. blind aan de
+    // parameters te blijven draaien.
+    void byteDecoded(quint32 strobeUs, QVector<quint32> bitDurationsUs,
+                      quint8 byteValue, bool parityOk);
 
 private:
     static void isrTrampoline(int gpio, int level, quint32 tick, void *userData);
@@ -164,6 +180,7 @@ private:
     quint32 m_lowPhaseStartTick = 0;
     quint32 m_strobeUs = 0;
     int m_bitsReceived = 0;      // 0..8: aantal data-/pariteitsbits na de startbit
+    QVector<quint32> m_bitDurations; // diagnose: rauwe lage-fase-duur (µs) per bit, zie byteDecoded()
     quint8 m_byteValue = 0;
     quint8 m_parityAccum = 0;    // lopende XOR van de 8 databits
 

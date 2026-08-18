@@ -27,6 +27,7 @@
 #include <QCommandLineOption>
 #include <QTextStream>
 #include <QDebug>
+#include <QStringList>
 
 #include "FllLink.h"
 #include "Mcp3426Adc.h"
@@ -169,6 +170,20 @@ int main(int argc, char *argv[]) {
         });
         QObject::connect(&tsic, &Tsic506Driver::errorOccurred, [](const QString &msg) {
             qWarning().noquote() << "TSic506-fout:" << msg;
+        });
+        // Diagnose (18-08-2026): rauwe Tstrobe + per-bit lage-fase-duren
+        // voor ELK gedecodeerd byte (geslaagd én mislukt), om de resterende
+        // ZACwire-decodeerfouten te kunnen onderzoeken — zie Tsic506Driver.h.
+        QObject::connect(&tsic, &Tsic506Driver::byteDecoded,
+                          [](quint32 strobeUs, QVector<quint32> bitDurationsUs, quint8 byteValue, bool parityOk) {
+            QStringList durs;
+            for (quint32 d : bitDurationsUs)
+                durs << QString::number(d);
+            qDebug().noquote() << QStringLiteral("TSic506-debug: Tstrobe=%1us byte=0b%2 pariteitOK=%3 duren=[%4]")
+                                       .arg(strobeUs)
+                                       .arg(static_cast<int>(byteValue), 8, 2, QChar('0'))
+                                       .arg(parityOk ? "ja" : "NEE")
+                                       .arg(durs.join(","));
         });
 
         tsic.start(gpio);

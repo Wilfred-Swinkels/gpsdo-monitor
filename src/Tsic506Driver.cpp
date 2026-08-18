@@ -29,6 +29,20 @@ void Tsic506Driver::start(int gpioPin) {
     m_gpioPin = gpioPin;
     resetFrameState();
 
+    // Experiment (18-08-2026): DMA-sample-interval van pigpio's standaard
+    // 5µs naar 1µs verkleinen. Moet vóór gpioInitialise() aangeroepen
+    // worden (proces-globaal, dus alleen effectief de allereerste keer in
+    // dit proces). cfgPeripheral=1 (PCM) i.p.v. 0 (PWM) om geen conflict te
+    // riskeren mocht er ooit iets anders op deze Pi de hardware-PWM
+    // gebruiken (audio e.d.) — hier niet het geval, maar kost niets.
+    // Reden: de resterende decodeerfouten na de pull-up-test blijven hoog,
+    // dus mogelijk is 5µs-kwantisering op de ~tientallen-µs-lage-fase-duren
+    // (Tstrobe is een fractie van het ~125µs-bit-venster) een deel van de
+    // verklaring. Nog NIET empirisch bevestigd of dit helpt — zie ook het
+    // nieuwe byteDecoded()-diagnose-signaal hieronder, dat de rauwe
+    // gemeten duren blootlegt zodat we dit kunnen verifiëren i.p.v. gokken.
+    gpioCfgClock(1, 1, 0);
+
     // gpioInitialise() is process-globaal (niet per-instantie); dit linkt
     // rechtstreeks tegen libpigpio (geen pigpiod-daemon) en heeft dus
     // root-rechten nodig — vanzelfsprekend aanwezig omdat gpsdo_app als
@@ -169,11 +183,13 @@ void Tsic506Driver::handleLowPulse(quint32 lowDurationUs) {
         m_bitsReceived = 0;
         m_byteValue = 0;
         m_parityAccum = 0;
+        m_bitDurations.clear();
         return;
     }
 
     // Data- of pariteitsbit: korter dan (marge x) Tstrobe = 1, langer = 0.
     const bool bitIsOne = lowDurationUs < static_cast<quint32>(m_strobeUs * kBitThresholdFactor);
+    m_bitDurations.append(lowDurationUs); // diagnose, zie byteDecoded()
 
     if (m_bitsReceived < 8) {
         m_byteValue = static_cast<quint8>((m_byteValue << 1) | (bitIsOne ? 1 : 0));
@@ -190,6 +206,7 @@ void Tsic506Driver::handleLowPulse(quint32 lowDurationUs) {
     const bool parityOk = (parityBit == (m_parityAccum != 0));
 
     const quint8 completedByte = m_byteValue;
+    emit byteDecoded(m_strobeUs, m_bitDurations, completedByte, parityOk);
     m_bitState = BitState::Idle;
     onByteComplete(completedByte, parityOk);
 }
@@ -234,4 +251,5 @@ void Tsic506Driver::resetFrameState() {
     m_parityAccum = 0;
     m_packetIndex = 0;
     m_highByte = 0;
+    m_bitDurations.clear();
 }
