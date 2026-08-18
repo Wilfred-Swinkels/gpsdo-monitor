@@ -26,6 +26,7 @@
 
 #include "FllLink.h"
 #include "GpsLink.h"
+#include "Tsic506Driver.h"
 
 class GpsdoModel : public QObject {
     Q_OBJECT
@@ -83,6 +84,21 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(QString xtalVoltageText READ xtalVoltageText NOTIFY adcChanged)
     Q_PROPERTY(QVariantList lampHistory READ lampHistory NOTIFY adcChanged)
 
+    // --- TSic 506F / "Base plate"-temperatuur -------------------------------
+    // Empirisch gevalideerd op GPIO17 (18-08-2026, zie Tsic506Driver.h voor
+    // de volledige bugfix-geschiedenis). tempText() geeft de kant-en-klare
+    // weergavetekst terug (bv. "22.0°C", inclusief gradensymbool+C, zoals
+    // afgesproken) i.p.v. een los double-property + QML-formattering, naar
+    // analogie van lampVoltageText()/xtalVoltageText() hierboven.
+    Q_PROPERTY(bool hasTsicData READ hasTsicData NOTIFY tsicChanged)
+    Q_PROPERTY(QString tempText READ tempText NOTIFY tsicChanged)
+    // Geschiedenis voor de temperatuur-trendpagina — zelfde {t, v}-vorm als
+    // accHistory/lampHistory, maar bewust NIET op elke 10Hz-sample van de
+    // sensor gepusht (dat zou de 24u/8000-punten-begrenzing binnen enkele
+    // minuten vollopen) — zie pushTempHistoryPoint() in de .cpp voor de
+    // throttle.
+    Q_PROPERTY(QVariantList tempHistory READ tempHistory NOTIFY tempHistoryChanged)
+
     // --- Nauwkeurigheid-geschiedenis (trendpagina 7) ------------------------
     // Lijst van {t: seconden-sinds-epoch (double), v: instantane Δf/f
     // (double), avg: lopend gemiddelde Δf/f sinds het begin van de huidige
@@ -102,6 +118,7 @@ public:
 
     void attachFllLink(FllLink *link);
     void attachGpsLink(GpsLink *link);
+    void attachTsic506(Tsic506Driver *driver);
     // void attachAdc(Mcp3426Adc *adc); // TODO zodra de MCP3426 bekabeld is
 
     bool hasFllData() const { return m_fllStatus.valid; }
@@ -142,6 +159,10 @@ public:
     QVariantList accHistory() const { return m_accHistory; }
     double lockStartEpoch() const { return m_lockStartEpoch; }
 
+    bool hasTsicData() const { return m_hasTsicData; }
+    QString tempText() const;
+    QVariantList tempHistory() const { return m_tempHistory; }
+
 signals:
     void fllChanged();
     void gpsChanged();
@@ -151,6 +172,8 @@ signals:
     void lockLost();
     void rawFllLineChanged();
     void accHistoryChanged();
+    void tsicChanged();
+    void tempHistoryChanged();
 
 private slots:
     void onFllStatus(const FllStatus &status);
@@ -158,11 +181,13 @@ private slots:
     void onGpsSatellites(const QList<GpsSatellite> &satellites);
     void onSurveyIn(const SurveyInStatus &status);
     void onRawFllLine(const QByteArray &line);
+    void onTsicTemperature(double celsius, quint16 rawValue);
 
 private:
     double computeAccuracyValue() const; // Δf/f als kommagetal, uit m_fllStatus
     double computeAccuracyAvgValue() const; // lopend gemiddelde sinds huidige L-periode
     void pushAccHistoryPoint();
+    void pushTempHistoryPoint(double celsius);
 
     FllStatus m_fllStatus;
     GpsFix m_gpsFix;
@@ -182,4 +207,11 @@ private:
     double m_lockStartEpoch = 0.0; // 0 = nog nooit gelockt sinds app-start
 
     QVariantList m_lampHistory; // blijft leeg totdat de MCP3426 bekabeld is
+
+    bool m_hasTsicData = false;
+    double m_lastTempC = 0.0;
+    QVariantList m_tempHistory;
+    // Epoch (seconden) van de laatst GEPUSHTE tempHistory-punt — throttle
+    // voor pushTempHistoryPoint(), zie .cpp. 0 = nog nooit gepusht.
+    double m_lastTempHistoryPushEpoch = 0.0;
 };

@@ -243,8 +243,13 @@ Item {
             }
         }
 
-        // --- 2x3 grid: lampspanning, xtal-spanning, sats gebruikt, --------
-        //     SNR sats, fix-type, DAC-waarde (vaste volgorde, zie boven) ---
+        // --- Grid: lampspanning, xtal-spanning, sats gebruikt, SNR sats, ---
+        //     fix-type, DAC-waarde (vaste volgorde, zie boven) + een 7e,
+        //     volle-breedte tegel "Base plate" (TSic 506F-temperatuur, op
+        //     verzoek 18-08-2026) onderaan. 4 rijen i.p.v. 3 om hiervoor
+        //     ruimte te maken — elke tegel wordt daardoor iets lager, maar
+        //     StatTile blijft leesbaar dankzij de label/waarde-keten (zie
+        //     StatTile.qml).
         Item {
             id: grid
             anchors.top: accStrip2.bottom
@@ -256,7 +261,7 @@ Item {
 
             property real tileSpacing: 8 * page.uiScale
             property real tileWidth: (width - tileSpacing) / 2
-            property real tileHeight: (height - 2 * tileSpacing) / 3
+            property real tileHeight: (height - 3 * tileSpacing) / 4
 
             StatTile {
                 x: 0
@@ -335,6 +340,26 @@ Item {
                 colInk: page.colInk
                 label: "DAC"
                 value: gpsdoModel.dacHex
+            }
+
+            // --- "Base plate"-temperatuur (TSic 506F, GPIO17) ------------------
+            // Volle breedte, eigen rij onderaan het grid — titel expliciet in
+            // het Engels ("Base plate", geen "Bodemplaat"), waarde inclusief
+            // gradensymbool + "C", exact zoals afgesproken 18-08-2026.
+            // gpsdoModel.tempText() bevat al de "°C"-opmaak (zie
+            // GpsdoModel::tempText()), dus hier alleen doorgeven.
+            StatTile {
+                x: 0
+                y: 3 * (grid.tileHeight + grid.tileSpacing)
+                width: grid.width
+                height: grid.tileHeight
+                uiScale: page.uiScale
+                colTile: page.colTile
+                colBorder: page.colBorder
+                colInkDim: page.colInkDim
+                colInk: page.colInk
+                label: "Base plate"
+                value: gpsdoModel.tempText
             }
         }
     }

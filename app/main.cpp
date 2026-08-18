@@ -9,7 +9,15 @@
 // aan bij de "snel itereren"-werkwijze van dit hele project.
 //
 // Gebruik:
-//   gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0
+//   gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17
+//
+// --tsic <gpio>: BCM-GPIO van de TSic 506F ZACwire-temperatuursensor
+// ("Base plate"-tegel op Overview + de temperatuur-trendpagina) — vereist
+// root, dus dan draait de hele app als root (`sudo ./gpsdo_app ... --tsic
+// 17`). Optioneel, net als --fll/--gps: weglaten laat die tegel/pagina
+// leeg i.p.v. de app te laten crashen. Zie Tsic506Driver.h voor de
+// volledige (empirisch gevalideerde, 18-08-2026) protocol-/bugfix-
+// geschiedenis.
 //
 // GPS Time Mode (Survey-In / Fixed Mode, zie GpsLink.h/TimeModeSupervisor.h):
 // volledig AUTOMATISCH, geen CLI-vlag nodig — op Wilfreds expliciete
@@ -44,6 +52,7 @@
 
 #include "FllLink.h"
 #include "GpsLink.h"
+#include "Tsic506Driver.h"
 #include "GpsdoModel.h"
 #include "TimeModeSupervisor.h"
 
@@ -74,19 +83,26 @@ int main(int argc, char *argv[]) {
     QCommandLineOption verifyThresholdOpt("verify-position-threshold-m",
         "Vanaf hoeveel meter afwijking de automatische opstart-verificatie de antenne als "
         "verplaatst beschouwt (default: 5.0)", "meters", "5.0");
+    QCommandLineOption tsicOpt("tsic",
+        "BCM-GPIO-nummer van de TSic 506F ZACwire-signaalpin voor de \"Base plate\"-temperatuur "
+        "(Wilfreds gekozen pin: 17) — vereist root (pigpio praat rechtstreeks met /dev/gpiomem). "
+        "Weglaten laat de temperatuur-tegel/-trendpagina leeg.", "gpio");
     parser.addOption(fllOpt);
     parser.addOption(gpsOpt);
     parser.addOption(surveyInMinDurOpt);
     parser.addOption(surveyInAccOpt);
     parser.addOption(resetSurveyInOpt);
     parser.addOption(verifyThresholdOpt);
+    parser.addOption(tsicOpt);
     parser.process(app);
 
     FllLink fllLink;
     GpsLink gpsLink;
+    Tsic506Driver tsicDriver;
     GpsdoModel gpsdoModel;
     gpsdoModel.attachFllLink(&fllLink);
     gpsdoModel.attachGpsLink(&gpsLink);
+    gpsdoModel.attachTsic506(&tsicDriver);
 
     // Onvoorwaardelijk aangemaakt (geen CLI-vlag meer nodig, zie toelichting
     // bovenaan dit bestand) — gewoon een stack-object zoals fllLink/gpsLink/
@@ -101,6 +117,21 @@ int main(int argc, char *argv[]) {
             QTextStream(stderr) << "Waarschuwing: kon FLL-seriele poort niet openen: " << parser.value(fllOpt) << "\n";
     } else {
         QTextStream(stderr) << "Waarschuwing: geen --fll opgegeven, FLL-tegel blijft leeg.\n";
+    }
+
+    if (parser.isSet(tsicOpt)) {
+        bool tsicOk = false;
+        const int tsicGpio = parser.value(tsicOpt).toInt(&tsicOk);
+        if (!tsicOk) {
+            QTextStream(stderr) << "Waarschuwing: ongeldig --tsic GPIO-nummer, \"Base plate\"-tegel blijft leeg.\n";
+        } else {
+            QObject::connect(&tsicDriver, &Tsic506Driver::errorOccurred, &app, [](const QString &msg) {
+                QTextStream(stderr) << "TSic506-fout: " << msg << "\n";
+            });
+            tsicDriver.start(tsicGpio);
+        }
+    } else {
+        QTextStream(stderr) << "Waarschuwing: geen --tsic opgegeven, \"Base plate\"-tegel blijft leeg.\n";
     }
 
     // Puur diagnostisch: laat in stderr zien welke Time Mode-status de

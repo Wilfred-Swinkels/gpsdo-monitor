@@ -26,6 +26,10 @@ void GpsdoModel::attachGpsLink(GpsLink *link) {
     connect(link, &GpsLink::surveyInUpdated, this, &GpsdoModel::onSurveyIn);
 }
 
+void GpsdoModel::attachTsic506(Tsic506Driver *driver) {
+    connect(driver, &Tsic506Driver::temperatureRead, this, &GpsdoModel::onTsicTemperature);
+}
+
 void GpsdoModel::onFllStatus(const FllStatus &status) {
     m_fllStatus = status;
     emit fllChanged();
@@ -81,6 +85,13 @@ void GpsdoModel::onSurveyIn(const SurveyInStatus &status) {
 void GpsdoModel::onRawFllLine(const QByteArray &line) {
     m_rawFllLine = QString::fromLatin1(line).trimmed();
     emit rawFllLineChanged();
+}
+
+void GpsdoModel::onTsicTemperature(double celsius, quint16 /*rawValue*/) {
+    m_hasTsicData = true;
+    m_lastTempC = celsius;
+    emit tsicChanged();
+    pushTempHistoryPoint(celsius);
 }
 
 // --- VE2ZAZ / FllLink -------------------------------------------------
@@ -316,6 +327,50 @@ QString GpsdoModel::surveyInAccuracyText() const {
     // vierkantswortel, gedeeld door 1000 voor meters.
     const double stddevM = std::sqrt(static_cast<double>(m_surveyIn.meanVarMm2)) / 1000.0;
     return QStringLiteral("±%1 m").arg(stddevM, 0, 'f', 2);
+}
+
+// --- TSic 506F / "Base plate"-temperatuur -----------------------------
+
+// Kant-en-klare weergavetekst, inclusief gradensymbool + "C" — op verzoek
+// (18-08-2026): "er moet een graden symbool en een C achter de temperatuur
+// staan". Eén decimaal, aansluitend bij de gespecificeerde sensor-
+// nauwkeurigheid (±0,1K over het 5..45°C-bereik, zie Tsic506Driver.h) —
+// meer decimalen tonen zou een precisie suggereren die de sensor niet
+// waarmaakt.
+QString GpsdoModel::tempText() const {
+    if (!m_hasTsicData)
+        return QStringLiteral("—");
+    return QStringLiteral("%1°C").arg(m_lastTempC, 0, 'f', 1);
+}
+
+// Throttled t.o.v. de 10Hz-sample-rate van de sensor (zie Tsic506Driver.h)
+// — elke sample pushen zou de 24u-geschiedenis/8000-puntenlimiet (zelfde
+// begrenzing als pushAccHistoryPoint()) binnen enkele minuten vollopen.
+// Eén punt per ~10s is ruim voldoende voor een temperatuur-trend (die uit
+// zijn aard traag verandert) en past ruim binnen de 8000-puntenlimiet over
+// 24 uur (24*3600/10 = 8640, dus de tijd-cutoff snoeit iets eerder dan de
+// hard-limit hieronder ooit bereikt wordt).
+void GpsdoModel::pushTempHistoryPoint(double celsius) {
+    const double epoch = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    if (m_lastTempHistoryPushEpoch != 0.0 && (epoch - m_lastTempHistoryPushEpoch) < 10.0)
+        return;
+    m_lastTempHistoryPushEpoch = epoch;
+
+    QVariantMap point;
+    point.insert(QStringLiteral("t"), epoch);
+    point.insert(QStringLiteral("v"), celsius);
+    m_tempHistory.append(point);
+
+    const double cutoff = epoch - 24.0 * 3600.0;
+    while (!m_tempHistory.isEmpty() &&
+           m_tempHistory.constFirst().toMap().value(QStringLiteral("t")).toDouble() < cutoff) {
+        m_tempHistory.removeFirst();
+    }
+    while (m_tempHistory.size() > 8000) {
+        m_tempHistory.removeFirst();
+    }
+
+    emit tempHistoryChanged();
 }
 
 QVariantList GpsdoModel::satellites() const {

@@ -273,7 +273,7 @@ Window {
         boundsBehavior: Flickable.StopAtBounds
         clip: true
 
-        model: 8
+        model: 9
         delegate: Item {
             required property int index
             width: pagesList.width
@@ -290,7 +290,8 @@ Window {
     // voorbij swipet), met dezelfde kleuren/uiScale-props als de tegels.
     property var pageComponents: [
         overviewComp, skyplotComp, fllStateComp, gpsFixComp,
-        chronoAnalogComp, chronoDigitalComp, accTrendComp, lampAgingComp
+        chronoAnalogComp, chronoDigitalComp, accTrendComp, lampAgingComp,
+        tempTrendComp
     ]
 
     Component {
@@ -362,6 +363,15 @@ Window {
     Component {
         id: lampAgingComp
         LampAgingPage {
+            uiScale: root.uiScale
+            colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
+            colInk: root.colInk; colInkDim: root.colInkDim
+            colGold: root.colGold; colIce: root.colIce
+        }
+    }
+    Component {
+        id: tempTrendComp
+        TemperatureTrendPage {
             uiScale: root.uiScale
             colBg: root.colBg; colTile: root.colTile; colBorder: root.colBorder
             colInk: root.colInk; colInkDim: root.colInkDim
