@@ -53,7 +53,7 @@
 //  voeding 3.0-5.5V, typ. 30µA @ 3.3V/25°C.
 //
 // Bit-decodering: duur-meting van de volledige lage fase (valflank tót
-// stijgflank) t.o.v. een 1,5×Tstrobe-drempel — zie handleEdge()/
+// stijgflank) t.o.v. een Tstrobe-drempel — zie handleEdge()/
 // handleLowPulse() in de .cpp. Op 18-08-2026 kort geprobeerd te vervangen
 // door een "wacht na de valflank Tstrobe µs, bemonster dan het pinniveau"-
 // aanpak (naar analogie van een werkende BASCOM/ATmega-referentie die
@@ -65,25 +65,32 @@
 // pigpio-`tick`-waarden (accurate DMA-sample-timestamps, ongevoelig voor
 // afleverlatency), en is daarom wél compatibel met `gpioSetAlertFuncEx()`.
 //
+// **Drempel empirisch bevestigd (18-08-2026)** via het `byteDecoded()`-
+// diagnose-signaal (zie hieronder) op echte hardware: bij Tstrobe≈64µs
+// clusteren databit-lage-fase-duren heel strak op ~32µs ("1") en ~96µs
+// ("0") — dat is **0,5×Tstrobe en 1,5×Tstrobe**, NIET 1× en 2× zoals de
+// oorspronkelijke aanname. De oude drempel (1,5×Tstrobe = 96) lag daarmee
+// bovenop de "0"-cluster i.p.v. er veilig tussenin — een paar µs normale
+// meetjitter (95 i.p.v. 96, ruimschoots binnen de waargenomen spreiding)
+// duwde een "0"-bit dan zomaar over de drempel heen naar "1", wat precies
+// de intermitterende pariteits-/framing-fouten verklaart. **Gefixt:**
+// `kBitThresholdFactor` van 1,5 naar **1,0×Tstrobe** — exact het midden
+// tussen de twee clusters (32 en 96), dus ~30µs marge aan weerszijden
+// i.p.v. bijna 0. Consistent met de BASCOM-referentie: die wacht exact
+// Tstrobe µs en bemonstert dan — bij een "1"-bit (~32µs) is de lijn op dat
+// moment allang weer hoog, bij een "0"-bit (~96µs) nog steeds laag; dat IS
+// letterlijk een 1×Tstrobe-drempel.
+//
 // Nog OPEN, nog niet empirisch geverifieerd:
-//  - De exacte drempel waarmee een lage-fase-duur als "1" of "0" bestempeld
-//    wordt (`kBitThresholdFactor`, hieronder 1,5×Tstrobe) is nog NIET tegen
-//    een echte TSic 506F met een logic-analyzer/scope geverifieerd — alleen
-//    tegen de spec + andere implementaties op papier. Wel al deels indirect
-//    bevestigd: eerste hardwaretests gaven af en toe een volledig correcte,
-//    plausibele meting (24,4°C), dus de drempel/polariteit zitten in de
-//    juiste orde van grootte — de resterende foutfrequentie lijkt eerder
-//    ruis/signaalintegriteit dan een verkeerde drempel.
 //  - De polariteit van het pariteitsbit (even parity: aangenomen dat het
-//    totaal aantal 1-bits inclusief pariteitsbit even moet zijn).
-//  - Of er een externe pull-up weerstand nodig is op de signaalpin (sommige
-//    TSic-varianten/schakelingen willen dat, andere niet) — controleren in
-//    het datasheet/de gekochte module vóór het aansluiten. Meest waarschijn-
-//    lijke verklaring voor de resterende foutfrequentie na de pigpio-
-//    ISR→Alert-bugfix (zie projectbrief).
-//  - Voedingsspanning van de sensor (3.0-5.5V spec) t.o.v. GPIO17's
-//    3,3V-tolerantie — controleren dat de sensor NIET op de 5V-rail hangt.
-//    Nog geen antwoord van Wilfred op deze vraag.
+//    totaal aantal 1-bits inclusief pariteitsbit even moet zijn) — de
+//    drempelfix hierboven loste de meeste pariteitsfouten al op, dus dit
+//    lijkt inmiddels ook impliciet bevestigd, maar nog niet expliciet
+//    tegen een edge case getest.
+//  - Of er een externe pull-up weerstand nodig is op de signaalpin — bleek
+//    bij een eerdere test geen merkbaar effect te hebben; blijkt nu
+//    waarschijnlijk niet nodig te zijn geweest, de drempel was de échte
+//    oorzaak. Kan alsnog blijven zitten (kan geen kwaad).
 //
 // Vereist libpigpio (niet pigpiod-daemon — deze driver linkt rechtstreeks
 // tegen de library en praat zelf met /dev/gpiomem, dus gpioInitialise()
@@ -188,11 +195,13 @@ private:
     int m_packetIndex = 0;       // 0 = wacht op hoge-bits-pakket, 1 = wacht op lage-bits-pakket
     quint8 m_highByte = 0;
 
-    // Marge t.o.v. Tstrobe om een lage-fase als "kort"(=1)/"lang"(=0) te
-    // classificeren: gebruik 1.5x Tstrobe als beslisgrens i.p.v. Tstrobe
-    // zelf, voor wat ruis-marge tussen de twee verwachte clusters (~1x en
-    // ~2x Tstrobe). Zie doc-comment boven voor de status van deze aanname.
-    static constexpr double kBitThresholdFactor = 1.5;
+    // Beslisgrens t.o.v. Tstrobe om een lage-fase als "kort"(=1)/"lang"(=0)
+    // te classificeren. Empirisch bevestigd (18-08-2026, zie doc-comment
+    // boven): de twee clusters zitten op 0,5×Tstrobe en 1,5×Tstrobe, dus
+    // 1,0×Tstrobe is exact het midden — maximale marge (~30µs) aan
+    // weerszijden. (Was eerst 1.5, wat bovenop de "0"-cluster lag i.p.v.
+    // ertussenin — zie de bugfix-toelichting boven.)
+    static constexpr double kBitThresholdFactor = 1.0;
 
     // pigpio-watchdog: als er dit lang geen enkele edge is op de pin, roept
     // pigpio de callback met level=2 aan ("timeout") — gebruiken we om
