@@ -24,4 +24,10 @@ cd "$SCRIPT_DIR"
 export QT_QPA_PLATFORM=eglfs
 export QT_QPA_EGLFS_HIDECURSOR=1
 
-exec ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 "$@"
+# --tsic 17: TSic 506F "Base plate"-temperatuursensor op BCM-GPIO17,
+# toegevoegd 18-08-2026 nadat bleek dat de tegel/trendpagina leeg bleef
+# ("—") omdat deze vlag hier nog ontbrak — de driver was al empirisch
+# gevalideerd en aan GpsdoModel/QML gekoppeld, maar gpsdo_app kreeg de
+# vlag simpelweg nooit doorgegeven. Vereist root, wat deze service toch al
+# als zodanig draait (zie systemd/gpsdo-monitor.service).
+exec ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17 "$@"
