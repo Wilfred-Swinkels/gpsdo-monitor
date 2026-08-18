@@ -22,7 +22,7 @@ Vereist: Qt6 (Core + SerialPort + Quick), CMake ≥ 3.16, een C++17-compiler,
 en libpigpio (voor de TSic 506F-temperatuursensor, ZACwire via GPIO).
 
 ```sh
-sudo apt install qt6-base-dev qt6-serialport-dev qt6-declarative-dev cmake build-essential libpigpio-dev
+sudo apt install qt6-base-dev qt6-serialport-dev qt6-declarative-dev cmake build-essential
 git clone https://github.com/Wilfred-Swinkels/gpsdo-monitor.git
 cd gpsdo-monitor
 cmake -B build
@@ -32,6 +32,33 @@ cmake --build build
 Als `qt6-declarative-dev` niet bestaat onder die naam op jouw Raspberry Pi OS-
 versie: zoek met `apt search qt6 | grep -i quick` naar het juiste pakket
 (vaak iets als `qt6-quick-dev` of `qt6-declarative`).
+
+**pigpio — GEEN apt-pakket meer op Bookworm, éénmalig zelf bouwen vóór de
+eerste `cmake --build`.** Fout hierboven overgeslagen? Op oudere Raspberry
+Pi OS-versies (t/m Bullseye) leverde Raspberry Pi's eigen apt-repo een
+kant-en-klaar `pigpio`-pakket met `pigpio.h` erbij — dat pakket bestaat niet
+meer op Bookworm (er is geen `libpigpio-dev` op Raspberry Pi OS; dat is een
+package-naam die op sommige andere Debian/Ubuntu-varianten iets heel anders
+levert — de socket-client-headers voor de `pigpiod`-daemon, niet
+`pigpio.h`). Eén keer zelf bouwen vanaf de officiële broncode volstaat:
+
+```sh
+sudo apt install -y git build-essential
+git clone https://github.com/joan2937/pigpio.git
+cd pigpio
+git checkout v79
+make
+sudo make install
+sudo ldconfig
+cd ..
+```
+
+Dit zet `pigpio.h` in `/usr/local/include` en `libpigpio.so`/`.a` in
+`/usr/local/lib` — standaard zoekpaden, dus `cmake --build build` vindt ze
+daarna gewoon. Werkt ongewijzigd op de Pi 3B+ (BCM2837) — dit is puur een
+Bookworm-pakketverdwijning, geen functionele breuk; **let op: pigpio werkt
+sowieso NIET op een Pi 5** (andere GPIO-hardware/RP1-chip), maar dat is hier
+niet van toepassing.
 
 **Let op — pigpiod-daemon uitzetten indien geïnstalleerd.** `Tsic506Driver`
 linkt rechtstreeks tegen libpigpio (geen `pigpiod`) en praat zelf met

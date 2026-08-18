@@ -24,6 +24,15 @@ Item {
     property color gridColor: "#3a3f52"
     property color labelColor: "#7d8296"
     property real uiScale: 1.0
+    // Alleen relevant voor yMode "log": de Y-positie toont altijd |v| (zie
+    // yFracLog), dus een teken-wissel (+ naar - of andersom) is normaal
+    // onzichtbaar — lijkt gewoon een duik naar de bodem. Met signAware:true
+    // wordt elk lijnsegment gekleurd op het teken van zijn eindpunt, zodat
+    // zo'n nul-doorgang zichtbaar wordt als kleurwissel i.p.v. verborgen te
+    // blijven. Default false, dus bestaand gedrag (bv. de lineaire
+    // lampspanning-pagina) blijft ongewijzigd.
+    property bool signAware: false
+    property color negativeLineColor: "#f3714f"
     property var valueFormatter: function (v) { return v.toFixed(2) }
     property var timeFormatter: function (t) {
         var d = new Date(t * 1000)
@@ -128,21 +137,33 @@ Item {
             ctx.fillStyle = grad
             ctx.fill()
 
-            ctx.beginPath()
-            for (var q = 0; q < visible.length; q++) {
-                var qx = xPix(visible[q].t), qy = yPix(visible[q].v)
-                if (q === 0) ctx.moveTo(qx, qy); else ctx.lineTo(qx, qy)
-            }
-            ctx.strokeStyle = root.lineColor
             ctx.lineWidth = 2 * root.uiScale
             ctx.lineJoin = "round"; ctx.lineCap = "round"
-            ctx.stroke()
+            if (root.signAware) {
+                for (var q = 1; q < visible.length; q++) {
+                    var qx0 = xPix(visible[q - 1].t), qy0 = yPix(visible[q - 1].v)
+                    var qx1 = xPix(visible[q].t), qy1 = yPix(visible[q].v)
+                    ctx.strokeStyle = visible[q].v < 0 ? root.negativeLineColor : root.lineColor
+                    ctx.beginPath()
+                    ctx.moveTo(qx0, qy0)
+                    ctx.lineTo(qx1, qy1)
+                    ctx.stroke()
+                }
+            } else {
+                ctx.beginPath()
+                for (var q2 = 0; q2 < visible.length; q2++) {
+                    var qx2 = xPix(visible[q2].t), qy2 = yPix(visible[q2].v)
+                    if (q2 === 0) ctx.moveTo(qx2, qy2); else ctx.lineTo(qx2, qy2)
+                }
+                ctx.strokeStyle = root.lineColor
+                ctx.stroke()
+            }
 
             var lastPt = visible[visible.length - 1]
             var lx = xPix(lastPt.t), ly = yPix(lastPt.v)
             ctx.beginPath()
             ctx.arc(lx, ly, 4 * root.uiScale, 0, 2 * Math.PI)
-            ctx.fillStyle = root.lineColor
+            ctx.fillStyle = (root.signAware && lastPt.v < 0) ? root.negativeLineColor : root.lineColor
             ctx.fill()
             ctx.strokeStyle = "#000000"
             ctx.lineWidth = 1.5 * root.uiScale

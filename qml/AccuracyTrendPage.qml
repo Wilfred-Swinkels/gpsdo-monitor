@@ -163,6 +163,8 @@ Item {
                 yMaxLog: 1e-8
                 lineColor: page.colIce
                 fillColor: page.colIce
+                signAware: true
+                negativeLineColor: page.colGold
                 gridColor: "#3a3f52"
                 labelColor: page.colInkDim
                 valueFormatter: function (v) { return page.fmtE(v) }
@@ -172,7 +174,7 @@ Item {
                 id: caption
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "Δf/f uit VE2ZAZ freq.-uitlezing t.o.v. 0x6800, gemiddeld via geaccumuleerd verschil — vereist averaging-modus M02 (Summing). Grafiek toont het lopende gemiddelde sinds de laatste ononderbroken lock, niet de rauwe sample-voor-sample uitlezing."
+                text: "Δf/f uit VE2ZAZ freq.-uitlezing t.o.v. 0x6800 (veld 6) — lopend gemiddelde sinds de laatste ononderbroken lock, niet de rauwe sample-voor-sample uitlezing. Werkt gewoon in de normale M01-steady-state; er is geen M02/geaccumuleerd-verschil voor nodig. As toont |Δf/f|: ijsblauw = positief, oranje = negatief."
                 color: page.colInkDim
                 font.pixelSize: 10 * page.uiScale
                 font.italic: true
