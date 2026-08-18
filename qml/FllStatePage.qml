@@ -93,11 +93,26 @@ Item {
                 // 24*uiScale = PageTitle's vaste hoogte (zie PageTitle.qml) —
                 // rechtstreeks als constante gebruikt i.p.v. een verborgen
                 // tweede PageTitle-instantie erbij te zetten.
-                height: parent.height - 24 * page.uiScale - statusRow.height - rawStrip.height - 4 * (10 * page.uiScale)
+                //
+                // Bugfix (18-08-2026, gemeld door Wilfred: "geen ruimte
+                // tussen dat paneltje en de bovenliggende panels"): de
+                // Column hierboven heeft 4 kinderen (PageTitle/statusRow/
+                // oscGrid/rawStrip) dus 3 tussenruimtes, maar hier stond
+                // "4 *" i.p.v. "3 *" — oscGrid werd daardoor 1 spacing te
+                // kort berekend. Los daarvan werd tileHeight hieronder met
+                // maar 1× tileSpacing i.p.v. 2× berekend voor 3 tegel-rijen
+                // (2 tussenruimtes nodig) — de derde rij (HOLDOVER-
+                // TELLER/ALARM LATCH) werd daardoor te hoog en liep buiten
+                // oscGrid's eigen ondergrens uit (Item clipt niet
+                // standaard), recht de Column-tussenruimte in die daarna
+                // voor rawStrip bedoeld was. Vandaar dat de ruwe-statusregel
+                // "te hoog"/zonder ruimte tegen de tegels erboven leek te
+                // staan. Beide nu gecorrigeerd.
+                height: parent.height - 24 * page.uiScale - statusRow.height - rawStrip.height - 3 * (10 * page.uiScale)
 
                 property real tileSpacing: 10 * page.uiScale
                 property real tileWidth: (width - tileSpacing) / 2
-                property real tileHeight: (height - tileSpacing) / 3
+                property real tileHeight: (height - 2 * tileSpacing) / 3
 
                 DataTile {
                     x: 0; y: 0
