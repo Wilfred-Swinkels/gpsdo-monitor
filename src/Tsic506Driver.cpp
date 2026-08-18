@@ -104,6 +104,28 @@ void Tsic506Driver::isrTrampoline(int gpio, int level, quint32 tick, void *userD
 // overlappend/gelijktijdig binnenkomen, dus de bit-/pakket-state hieronder
 // heeft bewust geen mutex nodig (single-threaded toegang, alleen niet
 // vanaf de thread die je zou verwachten).
+// Bugfix (18-08-2026): de decodeer-aanpak hieronder is herschreven nadat
+// Wilfred een werkende BASCOM/ATmega-referentie-implementatie aandroeg die
+// een fundamenteel andere, robuustere strategie gebruikt dan wat hier
+// eerst stond. De oude aanpak mat de VOLLEDIGE lage-fase-duur (val- t/m
+// stijgflank) en vergeleek die tegen 1,5×Tstrobe. Dat vereist dat zowel de
+// val- als de bijbehorende stijgflank van ELK bit correct en in de juiste
+// volgorde binnenkomen via pigpio's gpioSetAlertFuncEx() — die callback
+// wordt echter in batches afgeleverd ("nominally 1000 times per second",
+// per pigpio's eigen documentatie), en bij ~125µs-brede bit-vensters
+// passen makkelijk meerdere flanken in zo'n afleverbatch. Eén gemiste of
+// verkeerd-gepaarde flank in die batch corrumpeert de rest van dat byte —
+// wat precies verklaart wat Wilfred zag: soms een correcte meting (bewijst
+// dat Tstrobe/pariteit-aannames kloppen), soms complete onzin (raw-waarden
+// ver buiten 0..2047).
+// De BASCOM-referentie gebruikt i.p.v. een duur-meting een "wacht na de
+// valflank exact Tstrobe µs, bemonster dan het huidige pinniveau"-aanpak —
+// heeft dus alleen de valflank nodig (triggert 'm), en de stijgflank van
+// een databit wordt daarna simpelweg genegeerd. Dat elimineert de hele
+// klasse van val/stijg-paringsfouten. Hieronder dezelfde aanpak: alleen
+// level==0 (valflank) doet iets voor databits; level==1 wordt genegeerd
+// behalve tijdens de Tstrobe-meting van de STARTbit (die blijft wél een
+// echte duur-meting, want de startbit-lage-fase-duur IS de referentie).
 void Tsic506Driver::handleEdge(int level, quint32 tick) {
     if (level == PI_TIMEOUT) {
         // pigpio-watchdog: kWatchdogTimeoutMs geen edge gezien. Frame
@@ -120,35 +142,49 @@ void Tsic506Driver::handleEdge(int level, quint32 tick) {
         return;
     }
 
-    if (level == 0) {
-        // Valflank: lage fase van dit bit-venster begint nu.
-        m_lowPhaseStartTick = tick;
+    if (m_bitState == BitState::Idle) {
+        // Wachten op de valflank van de STARTbit van een nieuw byte.
+        if (level == 0) {
+            m_lowPhaseStartTick = tick;
+            m_bitState = BitState::MeasuringStrobe;
+        }
         return;
     }
 
-    // level == 1 (stijgflank): lage fase is net geëindigd. pigpio's tick is
-    // een 32-bit microseconden-teller die na ~72 minuten wrapt; unsigned
-    // aftrekken geeft ook over die wrap heen het juiste (kleine) verschil.
-    const quint32 lowDurationUs = tick - m_lowPhaseStartTick;
-    handleLowPulse(lowDurationUs);
+    if (m_bitState == BitState::MeasuringStrobe) {
+        // Wachten op de stijgflank die de lage fase van de STARTbit
+        // afsluit — die duur is per definitie de Tstrobe-referentie voor
+        // de rest van dit byte (zelfklokkend, zie doc-comment in de .h).
+        // pigpio's tick is een 32-bit microseconden-teller die na ~72
+        // minuten wrapt; unsigned aftrekken geeft ook over die wrap heen
+        // het juiste (kleine) verschil.
+        if (level == 1) {
+            m_strobeUs = tick - m_lowPhaseStartTick;
+            m_bitState = BitState::ReceivingByte;
+            m_bitsReceived = 0;
+            m_byteValue = 0;
+            m_parityAccum = 0;
+        }
+        return;
+    }
+
+    // BitState::ReceivingByte: een databit/pariteitsbit. Alleen de
+    // valflank triggert iets — daarna Tstrobe µs wachten en het pinniveau
+    // op dát moment bemonsteren (nog hoog = korte lage fase = "1", alweer
+    // gezakt = lange lage fase = "0"). gpioDelay() is pigpio's eigen
+    // microseconden-precieze wachtfunctie; dit blokkeert kort (tientallen
+    // µs) de pigpio-callbackthread, net zoals de BASCOM-ISR de MCU tijdens
+    // deze busy-wait ook volledig blokkeert — onschadelijk zolang de wacht
+    // korter is dan de ruimte tot het volgende bit-venster, wat hier ruim
+    // het geval is.
+    if (level == 0) {
+        gpioDelay(m_strobeUs);
+        const bool bitIsOne = (gpioRead(m_gpioPin) == 1);
+        handleSampledBit(bitIsOne);
+    }
 }
 
-void Tsic506Driver::handleLowPulse(quint32 lowDurationUs) {
-    if (m_bitState == BitState::Idle) {
-        // Dit is de lage fase van de STARTbit van een nieuw byte — die
-        // duur is per definitie de Tstrobe-referentie voor de rest van dit
-        // byte (zelfklokkend, zie doc-comment in de .h).
-        m_strobeUs = lowDurationUs;
-        m_bitState = BitState::ReceivingByte;
-        m_bitsReceived = 0;
-        m_byteValue = 0;
-        m_parityAccum = 0;
-        return;
-    }
-
-    // Data- of pariteitsbit: korter dan (marge x) Tstrobe = 1, langer = 0.
-    const bool bitIsOne = lowDurationUs < static_cast<quint32>(m_strobeUs * kBitThresholdFactor);
-
+void Tsic506Driver::handleSampledBit(bool bitIsOne) {
     if (m_bitsReceived < 8) {
         m_byteValue = static_cast<quint8>((m_byteValue << 1) | (bitIsOne ? 1 : 0));
         m_parityAccum ^= (bitIsOne ? 1 : 0);

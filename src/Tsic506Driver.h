@@ -52,20 +52,26 @@
 //  ±0.2K over het volle bereik; resolutie 0.034K; sample rate 10Hz;
 //  voeding 3.0-5.5V, typ. 30µA @ 3.3V/25°C.
 //
-// NIET automatisch gedaan door deze driver, bewust (net als dividerRatio
-// bij Mcp3426Adc — hardware-specifieke details horen niet als aanname in
-// firmware, maar moeten empirisch geverifieerd worden zodra er echt een
-// sensor aan de GPIO hangt):
-//  - De exacte drempel waarmee een lage-fase-duur als "1" of "0" bestempeld
-//    wordt (hieronder geïmplementeerd als vergelijking t.o.v. Tstrobe met
-//    een marge) is nog NIET tegen een echte TSic 506F met een
-//    logic-analyzer/scope geverifieerd — alleen tegen de spec + andere
-//    implementaties op papier.
+// Bit-decodering (bijgewerkt 18-08-2026, zie de bugfix-toelichting in de
+// .cpp): NIET (meer) een duur-meting van de volledige lage fase t.o.v. een
+// drempel, maar "wacht na de valflank exact Tstrobe µs, bemonster dan het
+// pinniveau" — zelfde aanpak als een door Wilfred aangedragen, werkende
+// BASCOM/ATmega-referentie-implementatie. Zie de .cpp voor de volledige
+// vergelijking. Dit maakt de eerdere `kBitThresholdFactor`-marge overbodig
+// (verwijderd) en hangt niet meer af van het correct paren van een val- én
+// stijgflank per databit.
+//
+// Nog OPEN, nog niet empirisch (opnieuw) geverifieerd na deze wijziging:
 //  - De polariteit van het pariteitsbit (even parity: aangenomen dat het
-//    totaal aantal 1-bits inclusief pariteitsbit even moet zijn) idem.
+//    totaal aantal 1-bits inclusief pariteitsbit even moet zijn).
 //  - Of er een externe pull-up weerstand nodig is op de signaalpin (sommige
 //    TSic-varianten/schakelingen willen dat, andere niet) — controleren in
-//    het datasheet/de gekochte module vóór het aansluiten.
+//    het datasheet/de gekochte module vóór het aansluiten. Blijft relevant
+//    ongeacht de decodeer-aanpak, want ruis op de lijn kan zowel de
+//    Tstrobe-referentiemeting als de vaste-vertraging-bemonstering
+//    verstoren.
+//  - Voedingsspanning van de sensor (3.0-5.5V spec) t.o.v. GPIO17's
+//    3,3V-tolerantie — controleren dat de sensor NIET op de 5V-rail hangt.
 //
 // Vereist libpigpio (niet pigpiod-daemon — deze driver linkt rechtstreeks
 // tegen de library en praat zelf met /dev/gpiomem, dus gpioInitialise()
@@ -129,7 +135,7 @@ signals:
 private:
     static void isrTrampoline(int gpio, int level, quint32 tick, void *userData);
     void handleEdge(int level, quint32 tick);
-    void handleLowPulse(quint32 lowDurationUs);
+    void handleSampledBit(bool bitIsOne);
     void onByteComplete(quint8 byteValue, bool parityOk);
     void resetFrameState();
 
@@ -138,10 +144,12 @@ private:
     bool m_pigpioReady = false;
 
     // --- Bit-niveau state (alleen gewijzigd vanuit de pigpio-callback-
-    //     thread; zie handleEdge/handleLowPulse — bewust GEEN mutex nodig
+    //     thread; zie handleEdge/handleSampledBit — bewust GEEN mutex nodig
     //     omdat pigpio callbacks voor eenzelfde GPIO niet overlappend
     //     worden aangeroepen). --------------------------------------------
-    enum class BitState { Idle, ReceivingByte };
+    // MeasuringStrobe: tussen de valflank van een STARTbit en de daarop-
+    // volgende stijgflank — die duur wordt m_strobeUs (zie handleEdge()).
+    enum class BitState { Idle, MeasuringStrobe, ReceivingByte };
     BitState m_bitState = BitState::Idle;
     quint32 m_lowPhaseStartTick = 0;
     quint32 m_strobeUs = 0;
@@ -152,12 +160,6 @@ private:
     // --- Pakket-niveau state (2 bytes per complete meting) --------------
     int m_packetIndex = 0;       // 0 = wacht op hoge-bits-pakket, 1 = wacht op lage-bits-pakket
     quint8 m_highByte = 0;
-
-    // Marge t.o.v. Tstrobe om een lage-fase als "kort"(=1)/"lang"(=0) te
-    // classificeren: gebruik 1.5x Tstrobe als beslisgrens i.p.v. Tstrobe
-    // zelf, voor wat ruis-marge tussen de twee verwachte clusters (~1x en
-    // ~2x Tstrobe). Nog NIET empirisch gevalideerd, zie doc-comment boven.
-    static constexpr double kBitThresholdFactor = 1.5;
 
     // pigpio-watchdog: als er dit lang geen enkele edge is op de pin, roept
     // pigpio de callback met level=2 aan ("timeout") — gebruiken we om
