@@ -8,15 +8,10 @@
 //  - de volledige satellietenlijst (skyplot + GPS-fix-balkjes)
 //  - gedetailleerde FLL-velden + de ruwe statusregel (FLL-state-pagina)
 //  - een groeiende Δf/f-geschiedenis (nauwkeurigheid-trendpagina)
-//  - een (nog lege) lampspanning-geschiedenis-haak, voor zodra de MCP3426
-//    bekabeld is (lampspanning-veroudering-pagina)
-//
-// Bewust NIET hier: lamp-/xtal-spanning zelf — de MCP3426 is nog niet
-// bekabeld (Wilfred is de PCB nog aan het maken), dus lampVoltageText()/
-// xtalVoltageText() geven voorlopig een vaste placeholder terug. Zodra
-// Mcp3426Adc aangesloten wordt: attachAdc(Mcp3426Adc*) toevoegen naar
-// analogie van attachFllLink()/attachGpsLink(), en deze twee properties
-// vullen vanuit de voltageRead()-signalen (en lampHistory ook echt vullen).
+//  - lamp-/xtal-spanning + een 1x/uur-lampspanning-veroudering-geschiedenis
+//    (MCP3426, PCB + bekabeling klaar 18-08-2026, zie attachAdc())
+//  - een "Base plate"-temperatuur (TSic 506F, zie attachTsic506())
+//  - BITE-lock-detect ("Atomic lock"/"Warm-up", zie attachBiteLock())
 
 #include <QObject>
 #include <QString>
@@ -27,6 +22,8 @@
 #include "FllLink.h"
 #include "GpsLink.h"
 #include "Tsic506Driver.h"
+#include "Mcp3426Adc.h"
+#include "BiteLockDriver.h"
 
 class GpsdoModel : public QObject {
     Q_OBJECT
@@ -79,9 +76,21 @@ class GpsdoModel : public QObject {
     Q_PROPERTY(QString surveyInAccuracyText READ surveyInAccuracyText NOTIFY surveyInChanged)
     Q_PROPERTY(int surveyInObservations READ surveyInObservations NOTIFY surveyInChanged)
 
-    // --- MCP3426 / lamp-/xtal-spanning — NOG NIET BEKABELD -----------------
+    // --- MCP3426 / lamp-/xtal-spanning — bekabeld en gekoppeld 18-08-2026 ---
+    // CH1 = LAMP VOLTS (J1-pin 5), CH2 = CRYSTAL VOLTS MONITOR (J1-pin 9),
+    // besloten 17-08-2026, zie de "Spanningsdelers"-sectie in de project-
+    // brief. lampVoltageText()/xtalVoltageText() geven "—" terug totdat de
+    // eerste voltageRead() binnen is (zie onAdcVoltage()).
+    Q_PROPERTY(bool hasAdcData READ hasAdcData NOTIFY adcChanged)
     Q_PROPERTY(QString lampVoltageText READ lampVoltageText NOTIFY adcChanged)
     Q_PROPERTY(QString xtalVoltageText READ xtalVoltageText NOTIFY adcChanged)
+    // Lange-termijn-veroudering-geschiedenis van de lampspanning, {t, v}
+    // net als accHistory/tempHistory — maar bewust MAAR 1 punt/uur (zie
+    // pushLampHistoryPoint()), want dit dient de trage lamp-veroudering-
+    // trend (LampAgingPage.qml, zoombaar t/m 30 dagen/"Alles"), niet de
+    // live spanning. Daarom ook GEEN 24u-tijd-cutoff zoals accHistory/
+    // tempHistory (die zou de 30d/Alles-zoom-opties zinloos maken) — alleen
+    // een ruime harde punten-cap.
     Q_PROPERTY(QVariantList lampHistory READ lampHistory NOTIFY adcChanged)
 
     // --- TSic 506F / "Base plate"-temperatuur -------------------------------
@@ -98,6 +107,16 @@ class GpsdoModel : public QObject {
     // minuten vollopen) — zie pushTempHistoryPoint() in de .cpp voor de
     // throttle.
     Q_PROPERTY(QVariantList tempHistory READ tempHistory NOTIFY tempHistoryChanged)
+
+    // --- BITE-lock-detect (LPRO-101 J1-pin 6) op GPIO27 ---------------------
+    // Besloten 17-08-2026, bekabeld en gekoppeld 18-08-2026 (zie
+    // BiteLockDriver.h). Vervangt de fix-type-tegel op het Overview-scherm
+    // (fix-type blijft gewoon staan op de GPS-fix-pagina). biteLockText()
+    // geeft de al-vertaalde UI-tekst terug — "Atomic lock" (LOW/locked) of
+    // "Warm-up" (HIGH/unlocked), beide bevestigd door Wilfred 17-08-2026 —
+    // zodat QML niet zelf hoeft te vertalen.
+    Q_PROPERTY(bool hasBiteLockData READ hasBiteLockData NOTIFY biteLockChanged)
+    Q_PROPERTY(QString biteLockText READ biteLockText NOTIFY biteLockChanged)
 
     // --- Nauwkeurigheid-geschiedenis (trendpagina 7) ------------------------
     // Lijst van {t: seconden-sinds-epoch (double), v: instantane Δf/f
@@ -119,7 +138,8 @@ public:
     void attachFllLink(FllLink *link);
     void attachGpsLink(GpsLink *link);
     void attachTsic506(Tsic506Driver *driver);
-    // void attachAdc(Mcp3426Adc *adc); // TODO zodra de MCP3426 bekabeld is
+    void attachAdc(Mcp3426Adc *adc);
+    void attachBiteLock(BiteLockDriver *driver);
 
     bool hasFllData() const { return m_fllStatus.valid; }
     QString lockState() const;
@@ -152,8 +172,9 @@ public:
     QString surveyInAccuracyText() const;
     int surveyInObservations() const { return static_cast<int>(m_surveyIn.observations); }
 
-    QString lampVoltageText() const { return QStringLiteral("—"); }
-    QString xtalVoltageText() const { return QStringLiteral("—"); }
+    bool hasAdcData() const { return m_hasLampData || m_hasXtalData; }
+    QString lampVoltageText() const;
+    QString xtalVoltageText() const;
     QVariantList lampHistory() const { return m_lampHistory; }
 
     QVariantList accHistory() const { return m_accHistory; }
@@ -162,6 +183,9 @@ public:
     bool hasTsicData() const { return m_hasTsicData; }
     QString tempText() const;
     QVariantList tempHistory() const { return m_tempHistory; }
+
+    bool hasBiteLockData() const { return m_hasBiteLockData; }
+    QString biteLockText() const;
 
 signals:
     void fllChanged();
@@ -174,6 +198,7 @@ signals:
     void accHistoryChanged();
     void tsicChanged();
     void tempHistoryChanged();
+    void biteLockChanged();
 
 private slots:
     void onFllStatus(const FllStatus &status);
@@ -182,12 +207,15 @@ private slots:
     void onSurveyIn(const SurveyInStatus &status);
     void onRawFllLine(const QByteArray &line);
     void onTsicTemperature(double celsius, quint16 rawValue);
+    void onAdcVoltage(const QString &channelName, double voltage, qint16 rawCode);
+    void onBiteLockChanged(bool locked);
 
 private:
     double computeAccuracyValue() const; // Δf/f als kommagetal, uit m_fllStatus
     double computeAccuracyAvgValue() const; // lopend gemiddelde sinds huidige L-periode
     void pushAccHistoryPoint();
     void pushTempHistoryPoint(double celsius);
+    void pushLampHistoryPoint(double voltage);
 
     FllStatus m_fllStatus;
     GpsFix m_gpsFix;
@@ -206,7 +234,14 @@ private:
     QVariantList m_accHistory;
     double m_lockStartEpoch = 0.0; // 0 = nog nooit gelockt sinds app-start
 
-    QVariantList m_lampHistory; // blijft leeg totdat de MCP3426 bekabeld is
+    bool m_hasLampData = false;
+    double m_lampVoltage = 0.0;
+    bool m_hasXtalData = false;
+    double m_xtalVoltage = 0.0;
+    QVariantList m_lampHistory;
+    // Epoch (seconden) van het laatst GEPUSHTE lampHistory-punt — throttle
+    // voor pushLampHistoryPoint() (1x/uur, zie .cpp). 0 = nog nooit gepusht.
+    double m_lastLampHistoryPushEpoch = 0.0;
 
     bool m_hasTsicData = false;
     double m_lastTempC = 0.0;
@@ -214,4 +249,7 @@ private:
     // Epoch (seconden) van de laatst GEPUSHTE tempHistory-punt — throttle
     // voor pushTempHistoryPoint(), zie .cpp. 0 = nog nooit gepusht.
     double m_lastTempHistoryPushEpoch = 0.0;
+
+    bool m_hasBiteLockData = false;
+    bool m_biteLocked = false; // true = LOW = locked ("Atomic lock"), false = HIGH = "Warm-up"
 };

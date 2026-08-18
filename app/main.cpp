@@ -9,7 +9,8 @@
 // aan bij de "snel itereren"-werkwijze van dit hele project.
 //
 // Gebruik:
-//   gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17
+//   gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17 \
+//             --adc /dev/i2c-1 --bite 27
 //
 // --tsic <gpio>: BCM-GPIO van de TSic 506F ZACwire-temperatuursensor
 // ("Base plate"-tegel op Overview + de temperatuur-trendpagina) — vereist
@@ -18,6 +19,22 @@
 // leeg i.p.v. de app te laten crashen. Zie Tsic506Driver.h voor de
 // volledige (empirisch gevalideerde, 18-08-2026) protocol-/bugfix-
 // geschiedenis.
+//
+// --adc <i2c-device> [--adc-addr <hex>]: I2C-bus van de MCP3426 (LPRO-101
+// lamp-/xtal-spanning, J1-pin 5/9 via een 33k/5,6k-spanningsdeler — zie
+// Mcp3426Adc.h/de projectbrief-sectie "Spanningsdelers"). Standaard I2C1
+// op de Pi-header is `/dev/i2c-1`; --adc-addr default 0x68 ("A0"-suffix).
+// Ook optioneel, net als --tsic. **Nog NIET empirisch tegen echte hardware
+// getest** — pas het I2C-adres aan als het daadwerkelijk gekochte
+// onderdeelnummer een andere suffix heeft.
+//
+// --bite <gpio>: BCM-GPIO van het BITE-lock-detect-signaal (LPRO-101
+// J1-pin 6, via een 3,0k/5,6k-niveauverlager — zie BiteLockDriver.h).
+// Wilfreds besloten pin: 27. Vervangt de fix-type-tegel op Overview door
+// "Atomic lock"/"Warm-up". Ook optioneel; **nog NIET empirisch tegen echte
+// hardware getest** — gebruik `gpsdo_test_cli --bite 27` om dit los te
+// verifiëren vóór hier volledig op te vertrouwen (zelfde volgorde als
+// destijds bij de TSic 506F).
 //
 // GPS Time Mode (Survey-In / Fixed Mode, zie GpsLink.h/TimeModeSupervisor.h):
 // volledig AUTOMATISCH, geen CLI-vlag nodig — op Wilfreds expliciete
@@ -53,6 +70,8 @@
 #include "FllLink.h"
 #include "GpsLink.h"
 #include "Tsic506Driver.h"
+#include "Mcp3426Adc.h"
+#include "BiteLockDriver.h"
 #include "GpsdoModel.h"
 #include "TimeModeSupervisor.h"
 
@@ -87,6 +106,15 @@ int main(int argc, char *argv[]) {
         "BCM-GPIO-nummer van de TSic 506F ZACwire-signaalpin voor de \"Base plate\"-temperatuur "
         "(Wilfreds gekozen pin: 17) — vereist root (pigpio praat rechtstreeks met /dev/gpiomem). "
         "Weglaten laat de temperatuur-tegel/-trendpagina leeg.", "gpio");
+    QCommandLineOption adcOpt("adc",
+        "I2C-device voor de MCP3426 (lamp-/xtal-spanning, bv. /dev/i2c-1). Weglaten laat de "
+        "lamp-/xtal-tegels en de veroudering-trendpagina leeg.", "device");
+    QCommandLineOption adcAddrOpt("adc-addr",
+        "I2C-adres van de MCP3426 in hex (default 0x68 = suffix A0)", "addr", "0x68");
+    QCommandLineOption biteOpt("bite",
+        "BCM-GPIO-nummer van het BITE-lock-detect-signaal (LPRO-101 J1-pin 6, via een "
+        "niveauverlager — Wilfreds besloten pin: 27). Vervangt de fix-type-tegel op Overview "
+        "door \"Atomic lock\"/\"Warm-up\". Weglaten laat die tegel leeg.", "gpio");
     parser.addOption(fllOpt);
     parser.addOption(gpsOpt);
     parser.addOption(surveyInMinDurOpt);
@@ -94,15 +122,22 @@ int main(int argc, char *argv[]) {
     parser.addOption(resetSurveyInOpt);
     parser.addOption(verifyThresholdOpt);
     parser.addOption(tsicOpt);
+    parser.addOption(adcOpt);
+    parser.addOption(adcAddrOpt);
+    parser.addOption(biteOpt);
     parser.process(app);
 
     FllLink fllLink;
     GpsLink gpsLink;
     Tsic506Driver tsicDriver;
+    Mcp3426Adc adc;
+    BiteLockDriver biteLockDriver;
     GpsdoModel gpsdoModel;
     gpsdoModel.attachFllLink(&fllLink);
     gpsdoModel.attachGpsLink(&gpsLink);
     gpsdoModel.attachTsic506(&tsicDriver);
+    gpsdoModel.attachAdc(&adc);
+    gpsdoModel.attachBiteLock(&biteLockDriver);
 
     // Onvoorwaardelijk aangemaakt (geen CLI-vlag meer nodig, zie toelichting
     // bovenaan dit bestand) — gewoon een stack-object zoals fllLink/gpsLink/
@@ -132,6 +167,58 @@ int main(int argc, char *argv[]) {
         }
     } else {
         QTextStream(stderr) << "Waarschuwing: geen --tsic opgegeven, \"Base plate\"-tegel blijft leeg.\n";
+    }
+
+    if (parser.isSet(adcOpt)) {
+        bool addrOk = false;
+        const quint8 adcAddr = static_cast<quint8>(parser.value(adcAddrOpt).toUShort(&addrOk, 16));
+        if (!addrOk) {
+            QTextStream(stderr) << "Waarschuwing: ongeldig --adc-addr, lamp-/xtal-tegels blijven leeg.\n";
+        } else {
+            QObject::connect(&adc, &Mcp3426Adc::errorOccurred, &app, [](const QString &msg) {
+                QTextStream(stderr) << "MCP3426-fout: " << msg << "\n";
+            });
+
+            // Kanaaltoewijzing + spanningsdeler-dimensionering besloten
+            // 17-08-2026 (zie de projectbrief-sectie "Spanningsdelers —
+            // dimensionering"): CH1 = LAMP VOLTS (J1-pin 5), CH2 = CRYSTAL
+            // VOLTS MONITOR (J1-pin 9), beide via dezelfde R1=33kΩ/R2=5,6kΩ-
+            // deler. dividerRatio = (R1+R2)/R2 — theoretische waarde, NOG
+            // NIET empirisch gekalibreerd tegen de echte gebouwde PCB (zie
+            // Mcp3426Adc.h: "empirisch bepalen, niet gokken"). Pas hier
+            // aan zodra Wilfred de werkelijke spanningen met een multimeter
+            // tegen de ADC-uitlezing geverifieerd heeft.
+            constexpr double kDividerRatio = (33.0 + 5.6) / 5.6;
+
+            Mcp3426Adc::ChannelConfig lampCh;
+            lampCh.channel = 1;
+            lampCh.name = QStringLiteral("lamp");
+            lampCh.dividerRatio = kDividerRatio;
+
+            Mcp3426Adc::ChannelConfig xtalCh;
+            xtalCh.channel = 2;
+            xtalCh.name = QStringLiteral("xtal");
+            xtalCh.dividerRatio = kDividerRatio;
+
+            adc.start(parser.value(adcOpt), adcAddr, lampCh, xtalCh);
+        }
+    } else {
+        QTextStream(stderr) << "Waarschuwing: geen --adc opgegeven, lamp-/xtal-tegels blijven leeg.\n";
+    }
+
+    if (parser.isSet(biteOpt)) {
+        bool biteOk = false;
+        const int biteGpio = parser.value(biteOpt).toInt(&biteOk);
+        if (!biteOk) {
+            QTextStream(stderr) << "Waarschuwing: ongeldig --bite GPIO-nummer, lock-status-tegel blijft leeg.\n";
+        } else {
+            QObject::connect(&biteLockDriver, &BiteLockDriver::errorOccurred, &app, [](const QString &msg) {
+                QTextStream(stderr) << "BiteLockDriver-fout: " << msg << "\n";
+            });
+            biteLockDriver.start(biteGpio);
+        }
+    } else {
+        QTextStream(stderr) << "Waarschuwing: geen --bite opgegeven, lock-status-tegel blijft leeg.\n";
     }
 
     // Puur diagnostisch: laat in stderr zien welke Time Mode-status de

@@ -13,10 +13,13 @@
 //   gpsdo_test_cli --tsic 17       (BCM-GPIO-nummer, niet de pinheader-positie —
 //                                    17 is Wilfreds gekozen pin voor de TSic 506F,
 //                                    zie Tsic506Driver.h)
+//   gpsdo_test_cli --bite 27      (BCM-GPIO-nummer van het BITE-lock-detect-
+//                                    signaal, Wilfreds besloten pin: 27, zie
+//                                    BiteLockDriver.h — NOG NIET hardware-getest)
 //   gpsdo_test_cli --fll /dev/ttyUSB0 --gps /dev/ttyUSB1
 //
-// --tsic vereist root (pigpio praat rechtstreeks met /dev/gpiomem), dus:
-//   sudo ./build/gpsdo_test_cli --tsic 17
+// --tsic/--bite vereisen root (pigpio praat rechtstreeks met /dev/gpiomem), dus:
+//   sudo ./build/gpsdo_test_cli --tsic 17 --bite 27
 //
 // De MCP3426 (--adc) hangt aan de standaard I2C1-bus van de Pi (GPIO2=SDA/
 // GPIO3=SCL, /dev/i2c-1) — geen apart GPIO-nummer nodig, dat ligt al vast
@@ -33,6 +36,7 @@
 #include "Mcp3426Adc.h"
 #include "GpsLink.h"
 #include "Tsic506Driver.h"
+#include "BiteLockDriver.h"
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
@@ -46,15 +50,17 @@ int main(int argc, char *argv[]) {
     QCommandLineOption adcOpt("adc", "I2C-device voor de MCP3426 (bv. /dev/i2c-1)", "device");
     QCommandLineOption adcAddrOpt("adc-addr", "I2C-adres van de MCP3426 in hex (default 0x68 = suffix A0)", "addr", "0x68");
     QCommandLineOption tsicOpt("tsic", "BCM-GPIO-nummer van de TSic 506F ZACwire-signaalpin (Wilfreds gekozen pin: 17)", "gpio", "17");
+    QCommandLineOption biteOpt("bite", "BCM-GPIO-nummer van het BITE-lock-detect-signaal (Wilfreds besloten pin: 27)", "gpio", "27");
     parser.addOption(fllOpt);
     parser.addOption(gpsOpt);
     parser.addOption(adcOpt);
     parser.addOption(adcAddrOpt);
     parser.addOption(tsicOpt);
+    parser.addOption(biteOpt);
     parser.process(app);
 
-    if (!parser.isSet(fllOpt) && !parser.isSet(gpsOpt) && !parser.isSet(adcOpt) && !parser.isSet(tsicOpt)) {
-        QTextStream(stderr) << "Geef minstens --fll, --gps, --adc of --tsic op. Zie --help.\n";
+    if (!parser.isSet(fllOpt) && !parser.isSet(gpsOpt) && !parser.isSet(adcOpt) && !parser.isSet(tsicOpt) && !parser.isSet(biteOpt)) {
+        QTextStream(stderr) << "Geef minstens --fll, --gps, --adc, --tsic of --bite op. Zie --help.\n";
         return 1;
     }
 
@@ -138,18 +144,24 @@ int main(int argc, char *argv[]) {
             qWarning().noquote() << "ADC-fout:" << msg;
         });
 
-        // TODO: dividerRatio is nog 1.0 (geen deler) — pas aan zodra de
-        // spanningsdelers gebouwd en empirisch gekalibreerd zijn tegen de
-        // echte J1-pinnen 5 (lamp) en 9 (xtal). Zie Mcp3426Adc.h.
+        // R1=33kΩ/R2=5,6kΩ-deler, besloten 17-08-2026 (zie de projectbrief-
+        // sectie "Spanningsdelers — dimensionering"), PCB + bekabeling
+        // klaar 18-08-2026. dividerRatio = (R1+R2)/R2 — nog de THEORETISCHE
+        // waarde, NOG NIET empirisch gekalibreerd tegen de echte gebouwde
+        // PCB met een multimeter op de echte J1-pinnen 5 (lamp) en 9 (xtal)
+        // — zie Mcp3426Adc.h ("empirisch bepalen, niet gokken"). Pas aan
+        // zodra dat gebeurd is.
+        const double dividerRatio = (33.0 + 5.6) / 5.6;
+
         Mcp3426Adc::ChannelConfig ch1;
         ch1.channel = 1;
         ch1.name = QStringLiteral("lamp");
-        ch1.dividerRatio = 1.0;
+        ch1.dividerRatio = dividerRatio;
 
         Mcp3426Adc::ChannelConfig ch2;
         ch2.channel = 2;
         ch2.name = QStringLiteral("xtal");
-        ch2.dividerRatio = 1.0;
+        ch2.dividerRatio = dividerRatio;
 
         adc.start(parser.value(adcOpt), addr, ch1, ch2);
     }
@@ -187,6 +199,27 @@ int main(int argc, char *argv[]) {
         });
 
         tsic.start(gpio);
+    }
+
+    BiteLockDriver bite;
+    if (parser.isSet(biteOpt)) {
+        bool ok = false;
+        const int gpio = parser.value(biteOpt).toInt(&ok);
+        if (!ok) {
+            QTextStream(stderr) << "Ongeldig --bite GPIO-nummer.\n";
+            return 1;
+        }
+
+        QObject::connect(&bite, &BiteLockDriver::lockChanged, [](bool locked) {
+            qInfo().noquote() << QStringLiteral("BITE: %1 (%2)")
+                                      .arg(locked ? "LOCKED" : "UNLOCKED/opwarmen")
+                                      .arg(locked ? "Atomic lock" : "Warm-up");
+        });
+        QObject::connect(&bite, &BiteLockDriver::errorOccurred, [](const QString &msg) {
+            qWarning().noquote() << "BiteLockDriver-fout:" << msg;
+        });
+
+        bite.start(gpio);
     }
 
     return app.exec();

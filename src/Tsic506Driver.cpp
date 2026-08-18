@@ -11,6 +11,7 @@
 // met de andere driver-klassen in deze codebase.
 
 #include "Tsic506Driver.h"
+#include "PigpioGuard.h"
 
 #include <QDebug>
 
@@ -29,25 +30,18 @@ void Tsic506Driver::start(int gpioPin) {
     m_gpioPin = gpioPin;
     resetFrameState();
 
-    // Experiment (18-08-2026): DMA-sample-interval van pigpio's standaard
-    // 5µs naar 1µs verkleinen. Moet vóór gpioInitialise() aangeroepen
-    // worden (proces-globaal, dus alleen effectief de allereerste keer in
-    // dit proces). cfgPeripheral=1 (PCM) i.p.v. 0 (PWM) om geen conflict te
-    // riskeren mocht er ooit iets anders op deze Pi de hardware-PWM
-    // gebruiken (audio e.d.) — hier niet het geval, maar kost niets.
-    // Reden: de resterende decodeerfouten na de pull-up-test blijven hoog,
-    // dus mogelijk is 5µs-kwantisering op de ~tientallen-µs-lage-fase-duren
-    // (Tstrobe is een fractie van het ~125µs-bit-venster) een deel van de
-    // verklaring. Nog NIET empirisch bevestigd of dit helpt — zie ook het
-    // nieuwe byteDecoded()-diagnose-signaal hieronder, dat de rauwe
-    // gemeten duren blootlegt zodat we dit kunnen verifiëren i.p.v. gokken.
-    gpioCfgClock(1, 1, 0);
-
-    // gpioInitialise() is process-globaal (niet per-instantie); dit linkt
-    // rechtstreeks tegen libpigpio (geen pigpiod-daemon) en heeft dus
-    // root-rechten nodig — vanzelfsprekend aanwezig omdat gpsdo_app als
-    // systemd-service met User=root draait, zie systemd/gpsdo-monitor.service.
-    if (gpioInitialise() < 0) {
+    // gpioInitialise()/gpioCfgClock() zijn PROCES-globaal, niet per-
+    // instantie — sinds BiteLockDriver (18-08-2026) er als tweede pigpio-
+    // gebruiker in hetzelfde proces bij kwam, lopen die twee via de
+    // gedeelde, ref-getelde PigpioGuard i.p.v. hier rechtstreeks
+    // gpioInitialise()/gpioTerminate() aan te roepen — zie PigpioGuard.h
+    // voor het waarom (een los gpioTerminate() vanuit de ene driver zou
+    // anders ook de andere driver stilletjes afsluiten). Het 1µs-DMA-
+    // sample-interval-experiment (was hier eerst een losse gpioCfgClock()-
+    // aanroep, zie de projectbrief voor de motivatie — nog NIET empirisch
+    // bevestigd of dit daadwerkelijk helpt) zit nu in PigpioGuard::acquire(),
+    // vóór de eerste gpioInitialise() in het proces.
+    if (!PigpioGuard::acquire()) {
         emit errorOccurred(QStringLiteral(
             "pigpio-initialisatie faalde — draait dit proces als root, en is "
             "de pigpiod-daemon (indien geïnstalleerd) uitgeschakeld?"));
@@ -93,7 +87,7 @@ void Tsic506Driver::stop() {
     if (m_pigpioReady) {
         gpioSetWatchdog(m_gpioPin, 0);
         gpioSetAlertFuncEx(m_gpioPin, nullptr, nullptr);
-        gpioTerminate();
+        PigpioGuard::release();
         m_pigpioReady = false;
     }
     if (m_thread.isRunning()) {

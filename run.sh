@@ -30,4 +30,16 @@ export QT_QPA_EGLFS_HIDECURSOR=1
 # gevalideerd en aan GpsdoModel/QML gekoppeld, maar gpsdo_app kreeg de
 # vlag simpelweg nooit doorgegeven. Vereist root, wat deze service toch al
 # als zodanig draait (zie systemd/gpsdo-monitor.service).
-exec ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17 "$@"
+#
+# --adc /dev/i2c-1 --bite 27: MCP3426 (lamp-/xtal-spanning) + BITE-lock-
+# detect, toegevoegd 18-08-2026 nadat de PCB/bekabeling klaar was. Zelfde
+# les als bij --tsic hierboven: zonder deze vlaggen hier expliciet erbij
+# te zetten, blijven die tegels/pagina's leeg, ook al zijn de drivers zelf
+# klaar. LET OP: in tegenstelling tot --tsic zijn Mcp3426Adc en
+# BiteLockDriver NOG NIET empirisch tegen echte hardware getest — als de
+# lamp-/xtal-/RB LOCK-tegels na een herstart iets geks tonen (bv. een
+# spanning die duidelijk niet klopt), eerst los verifiëren met
+# `sudo systemctl stop gpsdo-monitor && sudo ./build/gpsdo_test_cli --adc
+# /dev/i2c-1 --bite 27` vóór verder te zoeken in de UI-laag.
+exec ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17 \
+    --adc /dev/i2c-1 --bite 27 "$@"

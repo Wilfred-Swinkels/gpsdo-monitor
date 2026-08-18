@@ -100,6 +100,11 @@
 // dat de pigpiod-daemon (als die ooit los geïnstalleerd wordt) NIET
 // tegelijk draait: die claimt dezelfde GPIO-hardware exclusief.
 //
+// pigpio-init/-terminate loopt sinds 18-08-2026 via de gedeelde
+// `PigpioGuard` (ref-geteld) i.p.v. hier rechtstreeks gpioInitialise()/
+// gpioTerminate() aan te roepen — nodig sinds `BiteLockDriver` er als
+// tweede pigpio-gebruiker in hetzelfde proces bij kwam, zie PigpioGuard.h.
+//
 // Bronnen: IST AG ZACwire-interface-appnote (protocol-framing, bit-
 // encodering, timing), IST AG TSic-506-datasheet (omzetformule, bereik,
 // nauwkeurigheid, pinout, voeding), en de open-source referentie-

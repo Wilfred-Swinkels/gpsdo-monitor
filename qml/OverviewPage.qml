@@ -1,14 +1,17 @@
 import QtQuick 2.15
 
 // OverviewPage.qml — de eerste echte pagina: lock-hero, accuracy-strip,
-// lamp-veroudering-strip en een 2x3 grid met de 6 kerncijfers.
+// lamp-veroudering-strip en een grid met de kerncijfers.
 //
 // Layout met expliciete x/y/width/height i.p.v. Column/GridLayout (zie
 // main.qml voor de motivatie: geen impliciete-hoogte-circulariteit).
 //
-// De 6 grid-tegels volgen bewust exact de eerder afgesproken indeling uit
-// de HTML-mockup/projectbrief (screen 1 "Overview"): lampspanning,
-// xtal-spanning, sats gebruikt, SNR sats, fix-type, DAC-waarde.
+// De eerste 6 grid-tegels volgen bewust exact de eerder afgesproken
+// indeling uit de HTML-mockup/projectbrief (screen 1 "Overview"):
+// lampspanning, xtal-spanning, sats gebruikt, SNR sats, RB LOCK
+// (BITE-lock-detect, verving oorspronkelijk fix-type — besloten
+// 17-08-2026), DAC-waarde. Plus (18-08-2026) een 7e, volle-breedte tegel
+// "Base plate" (TSic 506F-temperatuur) in een 4e rij.
 //
 // `uiScale` komt van main.qml (werkelijke schermbreedte / 720) — alle
 // afmetingen hieronder zijn hiermee vermenigvuldigd zodat de pagina er ook
@@ -315,6 +318,12 @@ Item {
                 label: "SNR SATS"
                 value: gpsdoModel.snrAvgText
             }
+            // Besloten 17-08-2026, bekabeld/gekoppeld 18-08-2026: vervangt
+            // de vorige fix-type-tegel door het BITE-lock-detect-signaal
+            // van de LPRO-101 (J1-pin 6, via GPIO27) — fix-type zelf blijft
+            // gewoon op de GPS-fix-pagina (4) staan, alleen deze
+            // Overview-tegel is veranderd. Waarde komt al vertaald terug
+            // uit GpsdoModel::biteLockText() ("Atomic lock"/"Warm-up").
             StatTile {
                 x: 0
                 y: 2 * (grid.tileHeight + grid.tileSpacing)
@@ -325,8 +334,8 @@ Item {
                 colBorder: page.colBorder
                 colInkDim: page.colInkDim
                 colInk: page.colInk
-                label: "FIX TYPE"
-                value: gpsdoModel.fixTypeText
+                label: "RB LOCK"
+                value: gpsdoModel.biteLockText
             }
             StatTile {
                 x: grid.tileWidth + grid.tileSpacing

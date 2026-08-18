@@ -30,6 +30,14 @@ void GpsdoModel::attachTsic506(Tsic506Driver *driver) {
     connect(driver, &Tsic506Driver::temperatureRead, this, &GpsdoModel::onTsicTemperature);
 }
 
+void GpsdoModel::attachAdc(Mcp3426Adc *adc) {
+    connect(adc, &Mcp3426Adc::voltageRead, this, &GpsdoModel::onAdcVoltage);
+}
+
+void GpsdoModel::attachBiteLock(BiteLockDriver *driver) {
+    connect(driver, &BiteLockDriver::lockChanged, this, &GpsdoModel::onBiteLockChanged);
+}
+
 void GpsdoModel::onFllStatus(const FllStatus &status) {
     m_fllStatus = status;
     emit fllChanged();
@@ -92,6 +100,27 @@ void GpsdoModel::onTsicTemperature(double celsius, quint16 /*rawValue*/) {
     m_lastTempC = celsius;
     emit tsicChanged();
     pushTempHistoryPoint(celsius);
+}
+
+// channelName is "lamp" of "xtal" — zie de ChannelConfig::name-toewijzing
+// in main.cpp (attachAdc()-aanroeper), analoog aan hoe main_test_cli.cpp
+// dat al langer standalone deed.
+void GpsdoModel::onAdcVoltage(const QString &channelName, double voltage, qint16 /*rawCode*/) {
+    if (channelName == QLatin1String("lamp")) {
+        m_hasLampData = true;
+        m_lampVoltage = voltage;
+        pushLampHistoryPoint(voltage);
+    } else if (channelName == QLatin1String("xtal")) {
+        m_hasXtalData = true;
+        m_xtalVoltage = voltage;
+    }
+    emit adcChanged();
+}
+
+void GpsdoModel::onBiteLockChanged(bool locked) {
+    m_hasBiteLockData = true;
+    m_biteLocked = locked;
+    emit biteLockChanged();
 }
 
 // --- VE2ZAZ / FllLink -------------------------------------------------
@@ -371,6 +400,65 @@ void GpsdoModel::pushTempHistoryPoint(double celsius) {
     }
 
     emit tempHistoryChanged();
+}
+
+// --- MCP3426 / lamp-/xtal-spanning -------------------------------------
+
+QString GpsdoModel::lampVoltageText() const {
+    if (!m_hasLampData)
+        return QStringLiteral("—");
+    return QStringLiteral("%1 V").arg(m_lampVoltage, 0, 'f', 2);
+}
+
+QString GpsdoModel::xtalVoltageText() const {
+    if (!m_hasXtalData)
+        return QStringLiteral("—");
+    return QStringLiteral("%1 V").arg(m_xtalVoltage, 0, 'f', 2);
+}
+
+// 1 punt per uur (LPRO-101-veroudering is een trage trend over dagen/weken,
+// zie de "Lampspanning — veroudering vs. lock-zoek-jitter"-sectie in de
+// projectbrief) — bewust NIET de live/instant spanning, die staat al apart
+// in lampVoltageText()/de Overview-tegel. Geen tijd-cutoff (in tegenstelling
+// tot pushTempHistoryPoint()/pushAccHistoryPoint()): LampAgingPage.qml biedt
+// een "30d"/"Alles"-zoomoptie aan, dus een 24u-cutoff zou die zinloos maken.
+// Alleen een ruime harde punten-cap als backstop (20.000 punten bij 1/uur =
+// >2 jaar geschiedenis, ruim genoeg om nooit in de praktijk geraakt te
+// worden, maar voorkomt onbegrensde groei mocht de app maandenlang
+// doordraaien zonder herstart).
+void GpsdoModel::pushLampHistoryPoint(double voltage) {
+    const double epoch = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    if (m_lastLampHistoryPushEpoch != 0.0 && (epoch - m_lastLampHistoryPushEpoch) < 3600.0)
+        return;
+    m_lastLampHistoryPushEpoch = epoch;
+
+    QVariantMap point;
+    point.insert(QStringLiteral("t"), epoch);
+    point.insert(QStringLiteral("v"), voltage);
+    m_lampHistory.append(point);
+
+    while (m_lampHistory.size() > 20000) {
+        m_lampHistory.removeFirst();
+    }
+
+    // adcChanged() (al ge-emit door onAdcVoltage() vóór deze aanroep) dekt
+    // lampVoltageText()/xtalVoltageText() al — lampHistory heeft z'n eigen
+    // NOTIFY nodig omdat LampAgingPage.qml alleen naar adcChanged luistert
+    // via dezelfde property-groep, dus dit is bewust dezelfde emit als de
+    // rest van de ADC-properties i.p.v. een apart signaal (geen aparte
+    // lampHistoryChanged() nodig, in tegenstelling tot tempHistoryChanged()
+    // — dat volgt een ANDER Q_PROPERTY-cluster met een eigen NOTIFY).
+}
+
+// --- BITE-lock-detect (LPRO-101 J1-pin 6) op GPIO27 --------------------
+
+// Vertaalt de rauwe boolean naar de UI-teksten die Wilfred bevestigd heeft
+// (17-08-2026): LOW (locked) -> "Atomic lock", HIGH (unlocked/opwarmen) ->
+// "Warm-up". Vervangt de fix-type-tegel op het Overview-scherm.
+QString GpsdoModel::biteLockText() const {
+    if (!m_hasBiteLockData)
+        return QStringLiteral("—");
+    return m_biteLocked ? QStringLiteral("Atomic lock") : QStringLiteral("Warm-up");
 }
 
 QVariantList GpsdoModel::satellites() const {
