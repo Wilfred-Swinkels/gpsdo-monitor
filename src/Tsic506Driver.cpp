@@ -43,26 +43,42 @@ void Tsic506Driver::start(int gpioPin) {
 
     gpioSetMode(m_gpioPin, PI_INPUT);
 
-    // EITHER_EDGE: zowel de val- als de stijgflank interesseren ons — de
-    // lage fase van elk bit-venster (tussen val- en stijgflank) is precies
-    // wat handleLowPulse() nodig heeft om Tstrobe/bitwaarden te bepalen.
-    // Het timeout-argument (kWatchdogTimeoutMs) is pigpio's ingebouwde
-    // watchdog: geen enkele edge binnen die tijd -> dezelfde callback komt
-    // binnen met level=PI_TIMEOUT (zie handleEdge()). Vangt zowel "sensor
-    // niet aangesloten/geen voeding" als "frame halverwege blijven hangen"
-    // in één mechanisme, zonder een aparte gpioSetWatchdog()-aanroep nodig
-    // te hebben.
-    if (gpioSetISRFuncEx(m_gpioPin, EITHER_EDGE, static_cast<int>(kWatchdogTimeoutMs),
-                          &Tsic506Driver::isrTrampoline, this) < 0) {
-        emit errorOccurred(QStringLiteral("kon geen interrupt-handler registreren op GPIO %1")
+    // Bugfix (18-08-2026), gevonden bij Wilfreds eerste hardwaretest: dit
+    // registreerde oorspronkelijk gpioSetISRFuncEx(). Die functie gebruikt
+    // intern het Linux sysfs-GPIO-mechanisme (schrijft naar
+    // /sys/class/gpio/export om een echte kernel-interrupt te krijgen —
+    // zie pigpio's eigen documentatie: "The underlying Linux sysfs GPIO
+    // interface is used to provide the interrupt services"). Op Raspberry
+    // Pi OS Bookworm (kernel 6.6.x — exact wat op deze Pi 3B+ draait) is
+    // die sysfs-export kapot: schrijven naar /sys/class/gpio/export geeft
+    // "Invalid argument" (dmesg: "export_store: invalid GPIO N"), een
+    // bekend, door Raspberry Pi (nog) niet opgelost kernelprobleem dat
+    // meerdere GPIO-libraries raakt (pigpio, wiringPi). Vandaar de "kon
+    // geen interrupt-handler registreren"-foutmelding.
+    // gpioSetAlertFuncEx() is het juiste alternatief: pigpio's eigen
+    // DMA-gebaseerde GPIO-sampling, gebruikt geen sysfs — dit was ook
+    // altijd al het ontwerp-idee (zie de doc-comments hierboven/in de .h:
+    // "DMA-based edge-timestamping"), alleen implementeerde de code per
+    // ongeluk de sysfs-ISR-route i.p.v. de DMA-route. gpioSetAlertFuncEx()
+    // rapporteert sowieso beide flanken (geen EITHER_EDGE-parameter nodig)
+    // en heeft dezelfde callback-signatuur (gpio, level, tick, userdata),
+    // dus isrTrampoline()/handleEdge() hoeven niet aangepast te worden. De
+    // stilte-watchdog (level=PI_TIMEOUT, zie handleEdge()) zat bij
+    // gpioSetISRFuncEx() ingebakken in dezelfde aanroep, maar is bij
+    // gpioSetAlertFuncEx() een apart mechanisme — vandaar de losse
+    // gpioSetWatchdog()-aanroep hieronder.
+    if (gpioSetAlertFuncEx(m_gpioPin, &Tsic506Driver::isrTrampoline, this) < 0) {
+        emit errorOccurred(QStringLiteral("kon geen edge-callback registreren op GPIO %1")
                                 .arg(m_gpioPin));
         return;
     }
+    gpioSetWatchdog(m_gpioPin, kWatchdogTimeoutMs);
 }
 
 void Tsic506Driver::stop() {
     if (m_pigpioReady) {
-        gpioSetISRFuncEx(m_gpioPin, EITHER_EDGE, 0, nullptr, nullptr);
+        gpioSetWatchdog(m_gpioPin, 0);
+        gpioSetAlertFuncEx(m_gpioPin, nullptr, nullptr);
         gpioTerminate();
         m_pigpioReady = false;
     }
@@ -72,8 +88,10 @@ void Tsic506Driver::stop() {
     }
 }
 
-// Statische C-stijl trampoline, zoals pigpio's gpioSetISRFuncEx() vereist —
-// userData is de Tsic506Driver-instantie (meegegeven in start()).
+// Statische C-stijl trampoline, zoals pigpio's gpioSetAlertFuncEx() vereist
+// (zelfde signatuur als gpioSetISRFuncEx() had, dus deze functie zelf hoefde
+// niet te wijzigen bij de bugfix hierboven) — userData is de
+// Tsic506Driver-instantie (meegegeven in start()).
 void Tsic506Driver::isrTrampoline(int gpio, int level, quint32 tick, void *userData) {
     Q_UNUSED(gpio);
     auto *self = static_cast<Tsic506Driver *>(userData);

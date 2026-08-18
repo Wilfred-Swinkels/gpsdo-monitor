@@ -100,9 +100,12 @@ public:
     // verificatie vóór dit in de UI hangt.
     //
     // Start de eigen achtergrondthread + registreert een pigpio edge-
-    // interrupt-handler op gpioPin (DMA-based, µs-timestamps — dit is GEEN
-    // polling-lus zoals bij Mcp3426Adc, want ZACwire's ~125µs bit-venster
-    // is te snel voor een QTimer-polling-aanpak op een niet-realtime OS).
+    // callback op gpioPin via gpioSetAlertFuncEx() (DMA-based sampling,
+    // µs-timestamps, GEEN sysfs-GPIO-interrupt — zie de bugfix-toelichting
+    // in de .cpp voor waarom bewust niet gpioSetISRFuncEx() gebruikt wordt.
+    // Dit is GEEN polling-lus zoals bij Mcp3426Adc, want ZACwire's ~125µs
+    // bit-venster is te snel voor een QTimer-polling-aanpak op een niet-
+    // realtime OS).
     void start(int gpioPin);
     void stop();
 
