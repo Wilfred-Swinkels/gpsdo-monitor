@@ -41,5 +41,12 @@ export QT_QPA_EGLFS_HIDECURSOR=1
 # spanning die duidelijk niet klopt), eerst los verifiëren met
 # `sudo systemctl stop gpsdo-monitor && sudo ./build/gpsdo_test_cli --adc
 # /dev/i2c-1 --bite 27` vóór verder te zoeken in de UI-laag.
+#
+# --lamp-history: NIET hier expliciet gezet, de default in main.cpp
+# ("lamp_history.csv", relatief t.o.v. de working directory — dankzij de
+# cd hierboven dus de repo-root) volstaat. Toegevoegd 18-08-2026 n.a.v.
+# Wilfreds terechte opmerking dat 1 sample/uur zinloos is zolang de
+# geschiedenis niet herstarts overleeft — staat in .gitignore, dus die
+# groeit los van git pull/push.
 exec ./build/gpsdo_app --fll /dev/ttyUSB0 --gps /dev/ttyACM0 --tsic 17 \
     --adc /dev/i2c-1 --bite 27 "$@"

@@ -9,3 +9,6 @@ CMakeCache.txt
 *.user
 .vscode/
 .idea/
+
+# Persistente runtime-data, geen broncode (zie GpsdoModel::loadLampHistory()).
+lamp_history.csv

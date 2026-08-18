@@ -141,6 +141,18 @@ public:
     void attachAdc(Mcp3426Adc *adc);
     void attachBiteLock(BiteLockDriver *driver);
 
+    // Persistentie voor lampHistory (18-08-2026, n.a.v. Wilfreds terechte
+    // opmerking: 1 sample/uur heeft alleen zin als de geschiedenis een
+    // herstart overleeft — anders fragmenteert de veroudering-trend bij
+    // elke reboot/service-restart). Laadt bestaande punten uit een simpel
+    // "epoch,volt"-CSV-bestand (indien aanwezig) in m_lampHistory, en zet
+    // m_lastLampHistoryPushEpoch op het laatste geladen punt zodat de
+    // 1x/uur-throttle gewoon doorloopt vanaf waar hij gebleven was i.p.v.
+    // meteen een nieuw punt te pushen na het laden. Aanroepen VOOR
+    // attachAdc()/adc.start(), zie main.cpp. Ontbrekend bestand is geen
+    // fout — gewoon leeg beginnen (eerste run).
+    void loadLampHistory(const QString &path);
+
     bool hasFllData() const { return m_fllStatus.valid; }
     QString lockState() const;
     QString lockLabel() const;
@@ -242,6 +254,10 @@ private:
     // Epoch (seconden) van het laatst GEPUSHTE lampHistory-punt — throttle
     // voor pushLampHistoryPoint() (1x/uur, zie .cpp). 0 = nog nooit gepusht.
     double m_lastLampHistoryPushEpoch = 0.0;
+    // Bestandspad voor lampHistory-persistentie, gezet door loadLampHistory().
+    // Leeg = geen persistentie (bv. als loadLampHistory() nooit aangeroepen
+    // is) — pushLampHistoryPoint() slaat het wegschrijven dan gewoon over.
+    QString m_lampHistoryFilePath;
 
     bool m_hasTsicData = false;
     double m_lastTempC = 0.0;

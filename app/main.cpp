@@ -115,6 +115,12 @@ int main(int argc, char *argv[]) {
         "BCM-GPIO-nummer van het BITE-lock-detect-signaal (LPRO-101 J1-pin 6, via een "
         "niveauverlager — Wilfreds besloten pin: 27). Vervangt de fix-type-tegel op Overview "
         "door \"Atomic lock\"/\"Warm-up\". Weglaten laat die tegel leeg.", "gpio");
+    QCommandLineOption lampHistoryOpt("lamp-history",
+        "Pad naar het CSV-bestand waarin de 1x/uur-lampspanning-veroudering-geschiedenis "
+        "persistent wordt bijgehouden (18-08-2026, anders fragmenteert de trend bij elke "
+        "herstart). Relatief pad = t.o.v. de working directory (run.sh cd't naar de eigen "
+        "scriptmap, dus in de praktijk de repo-root). Bestand wordt aangemaakt als het nog "
+        "niet bestaat.", "pad", "lamp_history.csv");
     parser.addOption(fllOpt);
     parser.addOption(gpsOpt);
     parser.addOption(surveyInMinDurOpt);
@@ -125,6 +131,7 @@ int main(int argc, char *argv[]) {
     parser.addOption(adcOpt);
     parser.addOption(adcAddrOpt);
     parser.addOption(biteOpt);
+    parser.addOption(lampHistoryOpt);
     parser.process(app);
 
     FllLink fllLink;
@@ -138,6 +145,14 @@ int main(int argc, char *argv[]) {
     gpsdoModel.attachTsic506(&tsicDriver);
     gpsdoModel.attachAdc(&adc);
     gpsdoModel.attachBiteLock(&biteLockDriver);
+
+    // Vóór adc.start() hieronder: bestaande lampHistory (indien aanwezig)
+    // inladen zodat de veroudering-trend een herstart overleeft, en de
+    // 1x/uur-throttle vanaf het laatst bewaarde punt doorloopt i.p.v. na
+    // elke herstart meteen weer een nieuw punt te pushen. Onafhankelijk van
+    // --adc: onschuldig als de ADC niet gebruikt wordt (er wordt dan
+    // simpelweg nooit naar geschreven).
+    gpsdoModel.loadLampHistory(parser.value(lampHistoryOpt));
 
     // Onvoorwaardelijk aangemaakt (geen CLI-vlag meer nodig, zie toelichting
     // bovenaan dit bestand) — gewoon een stack-object zoals fllLink/gpsLink/

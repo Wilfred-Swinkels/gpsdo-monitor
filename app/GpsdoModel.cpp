@@ -8,6 +8,11 @@
 
 #include <QtMath>
 #include <QDateTime>
+#include <QFile>
+#include <QTextStream>
+#include <QFileInfo>
+#include <QDir>
+#include <QDebug>
 #include <cmath>
 
 GpsdoModel::GpsdoModel(QObject *parent) : QObject(parent) {
@@ -36,6 +41,69 @@ void GpsdoModel::attachAdc(Mcp3426Adc *adc) {
 
 void GpsdoModel::attachBiteLock(BiteLockDriver *driver) {
     connect(driver, &BiteLockDriver::lockChanged, this, &GpsdoModel::onBiteLockChanged);
+}
+
+// Zie de toelichting bij de declaratie in GpsdoModel.h. Simpel CSV-formaat
+// ("epoch,volt" per regel) i.p.v. iets zwaarders (SQLite/JSON) — bij 1
+// punt/uur is dit hooguit een paar honderd KB per jaar, en een platte
+// append-only tekstfile is triviaal te inspecteren/plotten met externe
+// tools (Excel/gnuplot) mocht dat ooit nuttig zijn.
+void GpsdoModel::loadLampHistory(const QString &path) {
+    m_lampHistoryFilePath = path;
+
+    QFile file(path);
+    if (!file.exists()) {
+        // Eerste run, of pad expres nog niet aangemaakt — geen fout, gewoon
+        // leeg beginnen. Het bestand wordt vanzelf aangemaakt bij het eerste
+        // gepushte punt (zie pushLampHistoryPoint()).
+        return;
+    }
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning().noquote() << QStringLiteral("lampHistory: kon %1 niet openen om te lezen, begin leeg.").arg(path);
+        return;
+    }
+
+    QTextStream in(&file);
+    QVariantList loaded;
+    while (!in.atEnd()) {
+        const QString line = in.readLine().trimmed();
+        if (line.isEmpty())
+            continue;
+        const QStringList parts = line.split(QLatin1Char(','));
+        if (parts.size() != 2)
+            continue; // corrupte/onverwachte regel, gewoon overslaan i.p.v. hele lading te laten falen
+        bool tOk = false, vOk = false;
+        const double t = parts.at(0).toDouble(&tOk);
+        const double v = parts.at(1).toDouble(&vOk);
+        if (!tOk || !vOk)
+            continue;
+
+        QVariantMap point;
+        point.insert(QStringLiteral("t"), t);
+        point.insert(QStringLiteral("v"), v);
+        loaded.append(point);
+    }
+    file.close();
+
+    // Zelfde harde cap als pushLampHistoryPoint() — als het bestand ooit
+    // groter is dan de cap (bv. handmatig aangevuld), alleen de nieuwste
+    // punten behouden.
+    while (loaded.size() > 20000)
+        loaded.removeFirst();
+
+    m_lampHistory = loaded;
+
+    // Throttle laten doorlopen vanaf het laatst geladen punt i.p.v. na het
+    // laden meteen weer een nieuw punt te pushen bij de eerstvolgende ADC-
+    // sample (zou een kunstmatig dicht-op-elkaar punt geven t.o.v. de
+    // 1x/uur-bedoeling).
+    if (!m_lampHistory.isEmpty()) {
+        m_lastLampHistoryPushEpoch = m_lampHistory.constLast().toMap().value(QStringLiteral("t")).toDouble();
+    }
+
+    qInfo().noquote() << QStringLiteral("lampHistory: %1 bestaand(e) punt(en) geladen uit %2.")
+                              .arg(m_lampHistory.size())
+                              .arg(path);
 }
 
 void GpsdoModel::onFllStatus(const FllStatus &status) {
@@ -439,6 +507,22 @@ void GpsdoModel::pushLampHistoryPoint(double voltage) {
 
     while (m_lampHistory.size() > 20000) {
         m_lampHistory.removeFirst();
+    }
+
+    // Persistentie (18-08-2026): append-only, zodat een crash/stroomuitval
+    // hooguit het allerlaatste punt kost i.p.v. de hele geschiedenis (in
+    // tegenstelling tot elke keer het complete bestand herschrijven). Leeg
+    // pad = loadLampHistory() nooit aangeroepen (bv. oude test-cli-paden) —
+    // dan gewoon alleen in-memory blijven, zoals voorheen.
+    if (!m_lampHistoryFilePath.isEmpty()) {
+        QFile file(m_lampHistoryFilePath);
+        if (file.open(QIODevice::Append | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << QString::number(epoch, 'f', 3) << ',' << QString::number(voltage, 'f', 6) << '\n';
+        } else {
+            qWarning().noquote() << QStringLiteral("lampHistory: kon %1 niet openen om te schrijven — punt alleen in-memory bewaard.")
+                                         .arg(m_lampHistoryFilePath);
+        }
     }
 
     // adcChanged() (al ge-emit door onAdcVoltage() vóór deze aanroep) dekt
